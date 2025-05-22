@@ -1,0 +1,22 @@
+{
+  "tarefas": [
+    {
+      "id": "ba240917-f456-474d-9b64-6d0e01c0dd3e",
+      "título": "Estudo Programação",
+      "descrição": "",
+      "data_criação": "2025-05-22T11:36:31.750180",
+      "concluído": false,
+      "data": "22/05/2025",
+      "hora": "18:00"
+    },
+    {
+      "id": "a0547a1e-784d-4f1f-af59-ee8b89fe9fa9",
+      "título": "Assistir Aula 05 do curso de Estrutura de Dados e algoritmos do Eduardo Galelo",
+      "descrição": "",
+      "data_criação": "2025-05-22T12:45:52.185841",
+      "concluído": false
+    }
+  ],
+  "eventos": [],
+  "pomodoros": []
+}
