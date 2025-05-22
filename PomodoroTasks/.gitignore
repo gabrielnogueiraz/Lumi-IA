@@ -1,0 +1,46 @@
+# Arquivos de bytecode Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribuição / empacotamento
+dist/
+build/
+*.egg-info/
+
+# Ambientes virtuais
+venv/
+env/
+ENV/
+
+# Configurações de IDEs e editores
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Arquivos de sistema
+.DS_Store
+Thumbs.db
+
+# Arquivos de logs e cache
+*.log
+.cache/
+.pytest_cache/
+
+# Arquivos de configuração local
+.env
+.venv
+env/
+
+# Arquivos de dados específicos do usuário
+data/*.json
+!data/tasks.json
+
+# Configurações específicas do sistema
+*.sqlite3
+*.db
+
+# Diretórios de relatórios e saída
+output/
+reports/
