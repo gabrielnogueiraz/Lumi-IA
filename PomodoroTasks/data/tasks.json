@@ -1,5 +1,15 @@
 {
-  "tarefas": [],
+  "tarefas": [
+    {
+      "id": "0403881d-96e9-47ba-a1de-452c8399131f",
+      "título": "Adicione, Estudo Pomodoro hoje",
+      "descrição": "",
+      "data_criação": "2025-05-26T18:29:43.435678",
+      "concluído": false,
+      "data": "23/05/2025",
+      "hora": "18:20"
+    }
+  ],
   "eventos": [],
   "pomodoros": []
 }
