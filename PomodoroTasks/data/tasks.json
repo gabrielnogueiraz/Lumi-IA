@@ -1,12 +1,20 @@
 {
   "tarefas": [
     {
-      "id": "1a2d888e-4f0b-4a35-a6a0-d7fe78b91411",
-      "título": "Corrigir erro portal usuário",
+      "id": "bfc1e621-7903-4c3d-8e21-4d356ce4b408",
+      "título": "Estudar Python",
       "descrição": "",
-      "data_criação": "2025-05-26T22:25:24.275470",
+      "data_criação": "2025-05-27T10:19:48.328573",
       "concluído": false,
-      "data": "26/05/2025"
+      "data": "27/05/2025"
+    },
+    {
+      "id": "bb8c6989-78c0-47a7-b5ea-3b9a8f52368b",
+      "título": "I need help with machine learning algorithms",
+      "descrição": "",
+      "data_criação": "2025-05-27T10:21:39.555063",
+      "concluído": false,
+      "data": "27/05/2025"
     }
   ],
   "eventos": [],
