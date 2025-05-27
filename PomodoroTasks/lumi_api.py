@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 def check_dependencies():
     """Verifica se todas as dependências necessárias estão instaladas"""
     missing_modules = []
-    required_modules = ["requests", "flask", "flask_cors"]
+    required_modules = ["flask", "flask_cors", "requests", "google.generativeai"]
 
     for module in required_modules:
         try:
