@@ -404,3 +404,272 @@ class TaskManager:
                 pass
 
         return resultado
+
+    # Métodos de compatibilidade para o novo ai_assistant.py (LUMI 2.0)
+    def add_task(self, task_title, description="", date=None, time=None):
+        """
+        Método de compatibilidade para adicionar tarefas com interface simplificada
+
+        Args:
+            task_title: Título da tarefa
+            description: Descrição opcional
+            date: Data opcional
+            time: Hora opcional
+
+        Returns:
+            bool: True se adicionado com sucesso
+        """
+        try:
+            info = {
+                "título": task_title,
+                "descrição": description,
+                "ação": "adicionar",
+            }
+
+            if date:
+                info["data"] = date
+            if time:
+                info["hora"] = time
+
+            result = self.adicionar_item("tarefa", info)
+            # Retorna True se a adição foi bem-sucedida
+            return "sucesso" in result.lower() or "ótimo" in result.lower() or "adicionad" in result.lower()
+        except Exception as e:
+            print(f"Erro ao adicionar tarefa: {e}")
+            return False
+
+    def list_tasks(self, filter_date=None):
+        """
+        Método de compatibilidade para listar tarefas com formato simplificado
+
+        Args:
+            filter_date: Data opcional para filtrar
+
+        Returns:
+            list: Lista de tarefas em formato dict
+        """
+        try:
+            tasks = []
+            for task in self.tasks.get("tarefas", []):
+                # Filtra por data se especificado
+                if filter_date and task.get("data") != filter_date:
+                    continue
+
+                # Converte para formato esperado pelo ai_assistant
+                formatted_task = {
+                    "id": task.get("id"),
+                    "title": task.get("título", ""),
+                    "description": task.get("descrição", ""),
+                    "completed": task.get("concluído", False),
+                    "date": task.get("data"),
+                    "time": task.get("hora"),
+                    "created_at": task.get("data_criação"),
+                }
+                tasks.append(formatted_task)
+
+            return tasks
+        except Exception as e:
+            print(f"Erro ao listar tarefas: {e}")
+            return []
+
+    def complete_task(self, task_identifier):
+        """
+        Método de compatibilidade para marcar tarefa como concluída
+
+        Args:
+            task_identifier: ID, número da posição (1-based) ou nome da tarefa
+
+        Returns:
+            tuple: (success: bool, task_title: str)
+        """
+        try:
+            tasks = self.tasks.get("tarefas", [])
+            if not tasks:
+                return False, ""
+
+            task_to_complete = None
+            task_index = -1
+
+            # Tenta interpretar como número (posição na lista)
+            try:
+                pos = int(str(task_identifier)) - 1  # Converte para base-0
+                if 0 <= pos < len(tasks):
+                    task_to_complete = tasks[pos]
+                    task_index = pos
+            except (ValueError, TypeError):
+                pass
+
+            # Se não encontrou por número, busca por ID ou nome
+            if task_to_complete is None:
+                for i, task in enumerate(tasks):
+                    if (
+                        task.get("id") == str(task_identifier)
+                        or str(task_identifier).lower() in task.get("título", "").lower()
+                    ):
+                        task_to_complete = task
+                        task_index = i
+                        break
+
+            if task_to_complete is None:
+                return False, ""
+
+            # Marca como concluída
+            task_to_complete["concluído"] = True
+
+            # Salva as alterações
+            if self._salvar_tarefas():
+                return True, task_to_complete.get("título", "")
+            else:
+                # Reverte se não conseguiu salvar
+                task_to_complete["concluído"] = False
+                return False, ""
+        except Exception as e:
+            print(f"Erro ao concluir tarefa: {e}")
+            return False, ""
+
+    def remove_task(self, task_identifier):
+        """
+        Método de compatibilidade para remover tarefa
+
+        Args:
+            task_identifier: ID, número da posição (1-based) ou nome da tarefa
+
+        Returns:
+            tuple: (success: bool, task_title: str)
+        """
+        try:
+            tasks = self.tasks.get("tarefas", [])
+            if not tasks:
+                return False, ""
+
+            task_to_remove = None
+            task_index = -1
+
+            # Trata casos especiais
+            if str(task_identifier).lower() in ["todas", "all", "tudo"]:
+                total_removed = len(tasks)
+                self.tasks["tarefas"] = []
+                if self._salvar_tarefas():
+                    return True, f"{total_removed} tarefas"
+                else:
+                    return False, ""
+
+            # Tenta interpretar como número (posição na lista)
+            try:
+                pos = int(str(task_identifier)) - 1  # Converte para base-0
+                if 0 <= pos < len(tasks):
+                    task_to_remove = tasks[pos]
+                    task_index = pos
+            except (ValueError, TypeError):
+                pass
+
+            # Se não encontrou por número, busca por ID ou nome
+            if task_to_remove is None:
+                for i, task in enumerate(tasks):
+                    if (
+                        task.get("id") == str(task_identifier)
+                        or str(task_identifier).lower() in task.get("título", "").lower()
+                    ):
+                        task_to_remove = task
+                        task_index = i
+                        break
+
+            if task_to_remove is None:
+                return False, ""
+
+            # Remove a tarefa
+            removed_task = tasks.pop(task_index)
+
+            # Salva as alterações
+            if self._salvar_tarefas():
+                return True, removed_task.get("título", "")
+            else:
+                # Reverte se não conseguiu salvar
+                tasks.insert(task_index, removed_task)
+                return False, ""
+        except Exception as e:
+            print(f"Erro ao remover tarefa: {e}")
+            return False, ""
+
+    def edit_task(
+        self, task_identifier, new_title=None, new_description=None, new_date=None, new_time=None
+    ):
+        """
+        Método de compatibilidade para editar tarefa
+
+        Args:
+            task_identifier: ID, número da posição (1-based) ou nome da tarefa
+            new_title: Novo título (opcional)
+            new_description: Nova descrição (opcional)
+            new_date: Nova data (opcional)
+            new_time: Novo horário (opcional)
+
+        Returns:
+            tuple: (success: bool, task_title: str)
+        """
+        try:
+            tasks = self.tasks.get("tarefas", [])
+            if not tasks:
+                return False, ""
+
+            task_to_edit = None
+
+            # Tenta interpretar como número (posição na lista)
+            try:
+                pos = int(str(task_identifier)) - 1  # Converte para base-0
+                if 0 <= pos < len(tasks):
+                    task_to_edit = tasks[pos]
+            except (ValueError, TypeError):
+                pass
+
+            # Se não encontrou por número, busca por ID ou nome
+            if task_to_edit is None:
+                for task in tasks:
+                    if (
+                        task.get("id") == str(task_identifier)
+                        or str(task_identifier).lower() in task.get("título", "").lower()
+                    ):
+                        task_to_edit = task
+                        break
+
+            if task_to_edit is None:
+                return False, ""
+
+            # Aplica as alterações
+            old_title = task_to_edit.get("título", "")
+
+            if new_title:
+                task_to_edit["título"] = new_title
+            if new_description is not None:
+                task_to_edit["descrição"] = new_description
+            if new_date:
+                task_to_edit["data"] = new_date
+            if new_time:
+                task_to_edit["hora"] = new_time
+
+            # Salva as alterações
+            if self._salvar_tarefas():
+                return True, task_to_edit.get("título", old_title)
+            else:
+                return False, ""
+        except Exception as e:
+            print(f"Erro ao editar tarefa: {e}")
+            return False, ""
+
+    def get_task_count(self):
+        """
+        Retorna contagem de tarefas (total, pendentes, concluídas)
+
+        Returns:
+            dict: Estatísticas das tarefas
+        """
+        try:
+            tasks = self.tasks.get("tarefas", [])
+            total = len(tasks)
+            completed = sum(1 for task in tasks if task.get("concluído", False))
+            pending = total - completed
+
+            return {"total": total, "completed": completed, "pending": pending}
+        except Exception as e:
+            print(f"Erro ao obter contagem: {e}")
+            return {"total": 0, "completed": 0, "pending": 0}
