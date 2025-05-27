@@ -74,8 +74,7 @@ def home():
         {
             "status": "online",
             "message": "🚀 Lumi API está funcionando!",
-            "version": "2.0.0",
-            "personality": "Humanizada e motivacional 💫",
+            "version": "1.0.0",
             "endpoints": {
                 "chat": "/api/chat",
                 "tasks": "/api/tasks",
@@ -107,9 +106,11 @@ def chat():
             return (
                 jsonify({"error": "Mensagem não pode estar vazia", "status": "error"}),
                 400,
-            )        # Processa a mensagem com a Lumi
+            )
+
+        # Processa a mensagem com a Lumi
         logger.info(f"📨 Processando mensagem: {user_message[:50]}...")
-        lumi_response = lumi_assistant.process_message(user_message)
+        lumi_response = lumi_assistant.processar_pergunta(user_message)
 
         # Atualiza dados da sessão
         if session_id not in session_data["active_sessions"]:
@@ -237,15 +238,14 @@ def api_status():
     return jsonify(
         {
             "status": "healthy",
-            "version": "2.0.0",
-            "personality": "Humanizada e motivacional 💫",
+            "version": "1.0.0",
             "uptime": str(datetime.now() - session_data["start_time"]),
             "total_requests": session_data["total_requests"],
             "active_sessions": len(session_data["active_sessions"]),
             "components": {
                 "task_manager": "online",
                 "reports_generator": "online",
-                "lumi_assistant": "online (LUMI 2.0 - Humanizada)",
+                "lumi_assistant": "online",
             },
             "timestamp": datetime.now().isoformat(),
         }
@@ -280,11 +280,10 @@ def internal_error(error):
 
 
 if __name__ == "__main__":
-    print("\n" + "=" * 80)
-    print(f"{'🚀 LUMI 2.0 API - ASSISTENTE HUMANIZADA 🚀':^80}")
-    print("=" * 80)
+    print("\n" + "=" * 70)
+    print(f"{'🚀 LUMI API - ASSISTENTE DE PRODUTIVIDADE 🚀':^70}")
+    print("=" * 70)
     print()
-    print("🌟 Nova versão: Personalidade humanizada e motivacional!")
     print("🌐 Servidor iniciando...")
     print("📍 URL: http://localhost:5000")
     print("📋 Endpoints disponíveis:")
@@ -298,9 +297,7 @@ if __name__ == "__main__":
     print("💡 Para testar: curl -X POST http://localhost:5000/api/chat \\")
     print("                     -H 'Content-Type: application/json' \\")
     print('                     -d \'{"message": "Olá Lumi!"}\'')
-    print()
-    print("🎯 LUMI 2.0: Mais humana, mais motivacional, mais especial!")
-    print("-" * 80)
+    print("-" * 70)
 
     # Inicia o servidor
     app.run(host="0.0.0.0", port=5000, debug=True, threaded=True)
