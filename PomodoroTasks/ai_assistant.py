@@ -5,6 +5,7 @@ import os
 import json
 import re
 import sys
+import random
 from datetime import datetime, timedelta
 
 # Verificar se o módulo requests está instalado
@@ -88,32 +89,33 @@ class LumiAssistant:
                 "editar", "alterar", "modificar", "mudar", "corrigir", "ajustar",
                 "atualizar", "revisar", "refinar", "trocar"
             ]
-        }
-
-        # Padrões regex avançados para extração de títulos de tarefas
+        }        # Padrões regex CORRIGIDOS para extração precisa de títulos de tarefas
         self.task_patterns = [
-            # Padrões diretos com palavras-chave
-            r'(?:adicionar|criar|nova|novo|incluir)\s+(?:tarefa\s+)?["\']([^"\']+)["\']',
-            r'(?:adicionar|criar|nova|novo|incluir)\s+(?:tarefa\s+)?(.+?)(?:\s+(?:para|até|em|na|no)\s+|$)',
+            # Padrão principal CORRIGIDO para "Adicione na minha agenda, estudar postgresql hoje as 22:00"
+            r'(?:adicionar?|adicione|criar?|crie|incluir?|inclua|colocar?|coloque|agendar?|agende|marcar?|marque)\s+(?:na\s+(?:minha\s+)?(?:agenda|lista)\s*,?\s*)?(.+?)(?:\s+(?:hoje|amanhã|amanha|para|até|às?|as|em|na|no|dia|hora)\s+(?:\d+|segunda|terça|quarta|quinta|sexta|sábado|domingo)|$)',
             
-            # Padrões com "preciso", "tenho que", "vou"
-            r'(?:preciso|tenho que|vou|quero|gostaria de)\s+(.+?)(?:\s+(?:hoje|amanhã|na|no|em|para|até)\s+|$)',
-            
-            # Padrões entre aspas
+            # Padrões para comandos diretos com aspas
             r'["\']([^"\']+)["\']',
             
-            # Padrões após dois pontos
-            r':\s*(.+?)(?:\s+(?:para|até|em|na|no)\s+|$)',
+            # Padrões para "preciso/tenho que/vou" + tarefa
+            r'(?:preciso|tenho que|vou|quero|gostaria de)\s+(.+?)(?:\s+(?:hoje|amanhã|amanha|na|no|em|para|até|às?|as)\s+|$)',
             
-            # Padrão genérico (último recurso)
-            r'(?:tarefa|task|fazer|lembrar)\s+(.+?)(?:\s+(?:para|até|em|na|no|hoje|amanhã)\s+|$)'
+            # Padrão para tarefas após dois pontos ou vírgula
+            r'[,:]\s*(.+?)(?:\s+(?:para|até|em|na|no|hoje|amanhã|às?|as)\s+|$)',
+            
+            # Padrão mais específico para capturar a ação principal
+            r'(?:fazer|estudar|comprar|ligar|enviar|terminar|completar|preparar|organizar|planejar)\s+(.+?)(?:\s+(?:hoje|amanhã|na|no|em|para|até|às?|as)\s+|$)',
+            
+            # Padrão genérico melhorado (último recurso)
+            r'(?:tarefa|task|atividade)\s+(.+?)(?:\s+(?:para|até|em|na|no|hoje|amanhã|às?|as)\s+|$)'
         ]
         
-        # Filtros para limpeza de títulos
+        # Filtros APRIMORADOS para limpeza de títulos  
         self.noise_words = [
-            'adicionar', 'criar', 'nova', 'novo', 'tarefa', 'task', 'preciso', 
-            'tenho que', 'vou', 'quero', 'gostaria', 'favor', 'por favor',
-            'para', 'de', 'fazer', 'incluir', 'na lista', 'nas tarefas'
+            'adicionar', 'adicione', 'criar', 'crie', 'nova', 'novo', 'tarefa', 'task', 
+            'preciso', 'tenho', 'que', 'vou', 'quero', 'gostaria', 'favor', 'por', 'favor',
+            'para', 'de', 'fazer', 'incluir', 'na', 'nas', 'lista', 'tarefas', 'minha', 'meu',
+            'agenda', 'hoje', 'amanhã', 'amanha', 'às', 'as', 'em', 'no', 'da', 'do', 'a', 'o'
         ]
 
     def _get_personality_response_style(self, action_type, success=True):
@@ -253,41 +255,58 @@ class LumiAssistant:
             title = ' '.join(title_words)
             title = self._clean_task_title(title)
             if len(title) > 3:
-                return title
-        
-        # Como último recurso, usa a mensagem inteira
+                return title        # Como último recurso, usa a mensagem inteira
         fallback_title = self._clean_task_title(message_clean)
         return fallback_title if len(fallback_title) > 3 else "Nova tarefa"
 
     def _clean_task_title(self, title):
         """
-        Limpa o título da tarefa removendo ruídos e formatando adequadamente
+        Limpa o título da tarefa removendo ruídos e formatando adequadamente - VERSÃO CORRIGIDA
         """
-        # Remove aspas extras
-        title = title.strip('"\'')
+        if not title:
+            return ""
+            
+        # Remove aspas extras e espaços
+        title = title.strip('"\'').strip()
         
-        # Remove palavras de ruído no início
+        # Remove palavras de ruído do início e fim
         words = title.lower().split()
+        original_words = title.split()  # Mantém capitalização original
         filtered_words = []
-        skip_next = False
         
+        # Pula palavras de ruído no início
+        start_idx = 0
         for i, word in enumerate(words):
-            if skip_next:
-                skip_next = False
-                continue
+            if word not in self.noise_words:
+                start_idx = i
+                break
+        
+        # Pega palavras relevantes, parando ANTES de indicadores temporais
+        for i in range(start_idx, len(words)):
+            word = words[i]
+            
+            # MELHORIA: Para ANTES de encontrar indicadores de tempo/data
+            if word in ['hoje', 'amanhã', 'amanha', 'para', 'às', 'as', 'em', 'na', 'no', 'dia', 'hora', 'ontem', 'semana', 'mes', 'ano']:
+                break
                 
-            if word in self.noise_words and i < 3:  # Remove ruído apenas no início
-                if word in ['preciso', 'tenho'] and i + 1 < len(words) and words[i + 1] == 'que':
-                    skip_next = True  # Pula "tenho que"
-                continue
-            filtered_words.append(word)
+            # MELHORIA: Para ANTES de números que indicam horário (22:00, 14h, etc.)
+            if re.search(r'\d+[:h]', word) or (word.isdigit() and len(word) <= 2):
+                break
+                
+            # Remove apenas artigos pequenos desnecessários, mas não no começo
+            if word not in ['a', 'o', 'de', 'da', 'do'] or len(filtered_words) == 0:
+                filtered_words.append(original_words[i])  # Mantém capitalização original
         
         if filtered_words:
             title = ' '.join(filtered_words)
         
-        # Capitalização adequada
+        # Remove indicadores temporais residuais do final
+        title = re.sub(r'\s+(hoje|amanhã|amanha|para|às?|as|em|na|no|dia|hora).*$', '', title, flags=re.IGNORECASE)
+        
+        # Capitalização adequada apenas da primeira letra
         title = title.strip()
-        if title:        title = title[0].upper() + title[1:]
+        if title and len(title) > 0:
+            title = title[0].upper() + title[1:]
         
         return title
 
@@ -419,9 +438,12 @@ class LumiAssistant:
             # Mantém apenas as últimas 20 interações na memória
             if len(self.conversation_memory) > 20:
                 self.conversation_memory = self.conversation_memory[-20:]
-            
-            # Detecta ação
+              # Detecta ação
             action = self._detect_action(message)
+            
+            # NOVA FUNCIONALIDADE: Verifica se é uma pergunta educacional
+            if self._detect_educational_intent(message):
+                return self._process_educational_query(message)
             
             # Processa baseado na ação detectada
             if action == "adicionar":
@@ -728,6 +750,287 @@ class LumiAssistant:
             return "productive"
         else:
             return "power_user"
+
+    # ========== CAPACIDADES EDUCACIONAIS DA LUMI ==========
+    
+    def _detect_educational_intent(self, message):
+        """
+        Detecta se a mensagem é uma pergunta educacional ou pedido de explicação
+        """
+        educational_patterns = [
+            r"(?:explique|explica|me explique|como funciona|o que é|what is)",
+            r"(?:ensine|ensina|me ensine|como fazer|how to)",
+            r"(?:qual a diferença|diferença entre|compare)",
+            r"(?:me ajude a entender|help me understand|não entendo)",
+            r"(?:exemplo|exemplos|give me an example)",
+            r"(?:resumo|summary|summarize|resuma)",
+            r"(?:defina|define|definição|definition)",
+            r"(?:por que|why|porque|razão|motivo)",
+            r"(?:conceitos|conceito|principais.*estudar)",
+            r"(?:dicas|dica|ajuda.*estudar|como estudar)"
+        ]
+        
+        message_lower = message.lower()
+        for pattern in educational_patterns:
+            if re.search(pattern, message_lower):
+                return True
+        return False
+    
+    def _process_educational_query(self, message):
+        """
+        Processa perguntas educacionais com a personalidade da Lumi
+        """
+        try:
+            # Extrai o tópico da pergunta
+            topic = self._extract_educational_topic(message)
+            
+            # Verifica se é pedido de dicas de estudo
+            if any(phrase in message.lower() for phrase in ['dicas', 'como estudar', 'cronograma', 'plano de estudo']):
+                return self._provide_study_tips(topic)
+            
+            # Verifica se é sobre conceitos importantes
+            if any(phrase in message.lower() for phrase in ['conceitos', 'principais', 'importantes']):
+                return self._explain_key_concepts(topic)
+            
+            # Gera explicação educacional
+            return self._generate_educational_explanation(topic, message)
+            
+        except Exception as e:
+            return f"🤔 Adoraria te ajudar a entender melhor! Pode reformular sua pergunta? Enquanto isso, que tal adicionarmos uma tarefa de estudo sobre esse assunto?"
+    
+    def _extract_educational_topic(self, message):
+        """
+        Extrai o tópico educacional da mensagem
+        """
+        # Remove palavras de pergunta para focar no tópico
+        message_clean = re.sub(r'\b(explique|explica|o que é|como funciona|ensine|ensina|me ajude|help)\b', '', message.lower())
+        message_clean = re.sub(r'\b(sobre|about|acerca de|conceitos|mais importantes)\b', '', message_clean)
+        message_clean = message_clean.strip()
+        
+        # Tópicos específicos conhecidos
+        known_topics = {
+            'postgresql': ['postgresql', 'postgres', 'sql', 'banco de dados'],
+            'python': ['python', 'programação python', 'linguagem python'],
+            'javascript': ['javascript', 'js', 'programação web'],
+            'html': ['html', 'markup', 'web'],
+            'css': ['css', 'estilo', 'design web'],
+            'react': ['react', 'reactjs', 'biblioteca javascript'],
+            'nodejs': ['nodejs', 'node.js', 'node', 'backend javascript'],
+            'git': ['git', 'controle de versão', 'versionamento'],
+            'docker': ['docker', 'container', 'containerização'],
+            'api': ['api', 'rest', 'restful', 'webservice']
+        }
+        
+        # Procura por tópicos conhecidos
+        for topic, keywords in known_topics.items():
+            for keyword in keywords:
+                if keyword in message_clean:
+                    return topic
+        
+        # Se não encontrou tópico específico, retorna as palavras principais
+        words = message_clean.split()
+        # Remove palavras muito comuns
+        stop_words = ['a', 'o', 'e', 'de', 'da', 'do', 'em', 'na', 'no', 'para', 'com', 'como', 'que', 'é', 'são', 'no']
+        meaningful_words = [w for w in words if w not in stop_words and len(w) > 2]
+        
+        if meaningful_words:
+            return ' '.join(meaningful_words[:3])  # Máximo 3 palavras
+        
+        return 'programação'  # Fallback padrão
+    
+    def _explain_key_concepts(self, topic):
+        """
+        Explica conceitos principais sobre um tópico específico
+        """
+        concepts = {
+            'postgresql': {
+                'concepts': [
+                    "🗄️ **Tabelas e Esquemas**: A estrutura básica onde seus dados ficam organizados",
+                    "🔗 **Relacionamentos (JOINs)**: Como conectar informações entre tabelas",
+                    "🔍 **Consultas SQL**: SELECT, INSERT, UPDATE, DELETE - os comandos essenciais",
+                    "🎯 **Índices**: Para fazer suas consultas voarem!",
+                    "🔐 **Constraints**: Regras que mantêm seus dados íntegros",
+                    "⚡ **Stored Procedures**: Funções que rodam direto no banco",
+                    "📊 **Views**: Consultas salvas para facilitar sua vida"
+                ],
+                'tip': "💡 **Dica da Lumi**: Comece dominando SELECT com JOINs - é a base de tudo no PostgreSQL! Depois parta para INSERT/UPDATE/DELETE."
+            },
+            'python': {
+                'concepts': [
+                    "📝 **Variáveis e Tipos**: int, str, list, dict - os blocos básicos",
+                    "🔄 **Estruturas de Controle**: if/else, for, while - controlando o fluxo",
+                    "🎯 **Funções**: Organizando seu código em pedaços reutilizáveis",
+                    "📦 **Modules e Packages**: Usando bibliotecas e organizando projetos",
+                    "🏗️ **Classes e Objetos**: Programação orientada a objetos",
+                    "⚠️ **Tratamento de Erros**: try/except para código robusto",
+                    "📚 **Bibliotecas**: pandas, numpy, requests e outras ferramentas poderosas"
+                ],
+                'tip': "💡 **Dica da Lumi**: Python é como conversar com o computador de forma amigável! Comece com variáveis e funções, pratique um pouquinho todo dia."
+            },
+            'javascript': {
+                'concepts': [
+                    "⚡ **Variáveis e Escopo**: let, const, var - como armazenar dados",
+                    "🎭 **Funções**: function, arrow functions, callbacks",
+                    "🏠 **DOM Manipulation**: Fazendo páginas interativas",
+                    "⏰ **Eventos**: Click, hover, submit - reagindo às ações do usuário",
+                    "🔄 **Promises e Async/Await**: Lidando com operações assíncronas",
+                    "📡 **APIs e Fetch**: Buscando dados de serviços externos",
+                    "🎨 **Frameworks**: React, Vue, Angular - construindo apps modernas"
+                ],
+                'tip': "💡 **Dica da Lumi**: JavaScript é a magia por trás da web! Comece entendendo como manipular elementos da página, depois evolua para APIs."
+            }
+        }
+        
+        topic_lower = topic.lower()
+        for key in concepts:
+            if key in topic_lower:
+                info = concepts[key]
+                response = f"🎯 **Conceitos principais de {topic.upper()}:**\n\n"
+                response += "\n\n".join(info['concepts'])
+                response += f"\n\n{info['tip']}"
+                response += f"\n\n✨ Quer que eu adicione uma tarefa de estudo sobre algum desses conceitos? É só me dizer!"
+                return response
+        
+        # Resposta genérica para tópicos não mapeados
+        return f"""🤔 **{topic.title()}** é um assunto bem interessante! 
+
+📚 Embora eu não tenha os conceitos específicos na ponta da língua, posso te ajudar de outras formas:
+
+✅ **Criar tarefas de estudo estruturadas** sobre {topic}
+🎯 **Sugerir um cronograma** de aprendizado
+📝 **Organizar suas sessões de estudo** para máxima eficiência
+
+💡 **Dica**: Que tal começarmos adicionando "Pesquisar conceitos básicos de {topic}" às suas tarefas? Assim você pode começar a explorar!
+
+🌟 **Fala comigo**: "Adicione estudar conceitos de {topic}" e eu organizo isso para você!"""
+    
+    def _generate_educational_explanation(self, topic, message):
+        """
+        Gera explicações educacionais claras e didáticas com a personalidade da Lumi
+        """
+        try:
+            # Monta um prompt educacional para a IA
+            educational_prompt = f"""Como Lumi, uma assistente educacional entusiástica e didática, responda a esta pergunta de forma clara e motivadora:
+
+Pergunta: {message}
+Tópico: {topic}
+
+Diretrizes para sua resposta:
+- Use linguagem acessível e exemplos práticos
+- Seja didática mas não condescendente  
+- Mantenha tom motivacional e encorajador
+- Use emojis para tornar mais visual (mas sem exagerar)
+- Inclua dicas práticas quando relevante
+- Mantenha explicação concisa mas completa
+- Sempre termine sugerindo como posso ajudar mais (tarefas, cronograma, etc.)
+
+Seja a Lumi: carismática, inteligente e genuinamente preocupada em ajudar o usuário a aprender!"""
+            
+            # Chama a IA externa
+            messages = [
+                {
+                    "role": "system",
+                    "content": educational_prompt
+                },
+                {
+                    "role": "user",
+                    "content": message
+                }
+            ]
+            
+            response = self._call_openrouter_api(messages)
+            
+            if response and "erro" not in response.lower():
+                return response
+            else:
+                return self._fallback_educational_response(topic, message)
+                
+        except Exception as e:
+            return self._fallback_educational_response(topic, message)
+    
+    def _fallback_educational_response(self, topic, message):
+        """
+        Resposta educacional de fallback quando a API externa não está disponível
+        """
+        fallback_responses = {
+            "postgresql": {
+                "explanation": "🗄️ **PostgreSQL** é um sistema de banco de dados relacional super poderoso! É como um armário gigante e organizado onde você guarda informações de forma estruturada.",
+                "tips": "📝 **Dica de estudo**: Comece aprendendo SQL básico (SELECT, INSERT, UPDATE, DELETE), depois explore funcionalidades avançadas como JOINs e stored procedures!"
+            },
+            "python": {
+                "explanation": "🐍 **Python** é uma linguagem de programação incrível! É como aprender um novo idioma para conversar com computadores, mas muito mais amigável que outros.",
+                "tips": "💡 **Dica**: Pratique um pouquinho todo dia. Python é perfeito para iniciantes porque a sintaxe é bem clara e legível!"
+            },
+            "javascript": {
+                "explanation": "⚡ **JavaScript** é a linguagem que dá vida às páginas web! É como a mágica que faz botões funcionarem e páginas ficarem interativas.",
+                "tips": "🚀 **Dica**: Comece com o básico (variáveis, funções) e depois parta para manipulação do DOM (elementos da página)!"
+            }
+        }
+        
+        topic_lower = topic.lower()
+        for key in fallback_responses:
+            if key in topic_lower:
+                response = fallback_responses[key]
+                return f"{response['explanation']}\n\n{response['tips']}\n\n✨ **Quer que eu ajude você a criar uma tarefa de estudo sobre isso?** É só me dizer!"
+        
+        # Resposta genérica motivacional
+        return f"""🤔 Essa é uma pergunta interessante sobre **{topic}**! 
+
+📚 Embora eu não tenha uma explicação específica na ponta da língua, posso te ajudar de outras formas incríveis:
+
+✅ **Criar uma tarefa de estudo** sobre {topic}
+🎯 **Sugerir fontes de pesquisa** confiáveis  
+📝 **Organizar um cronograma** de estudos personalizado
+💡 **Dar dicas de como estudar** de forma mais eficiente
+
+🌟 **Que tal começarmos adicionando "{topic}" nas suas tarefas de estudo?** Assim você não esquece de pesquisar sobre isso!
+
+💪 **Fala comigo**: "Adicione estudar {topic}" e eu organizo tudo para você!"""
+
+    def _provide_study_tips(self, subject=None):
+        """
+        Fornece dicas de estudo motivacionais e práticas com a personalidade da Lumi
+        """
+        general_tips = [
+            "🧠 **Técnica Pomodoro**: 25 min focado + 5 min pausa = produtividade máxima!",
+            "📝 **Anote à mão**: pesquisas mostram que escrever à mão melhora a memorização!",
+            "🔄 **Revisão espaçada**: revise o conteúdo em 1 dia, 3 dias, 1 semana e 1 mês!",
+            "👥 **Ensine para alguém**: se conseguir explicar, você realmente entendeu!",
+            "🎯 **Metas pequenas**: divida tópicos grandes em partes menores e celebre cada conquista!",
+            "🏃‍♀️ **Estude ativamente**: faça resumos, mapas mentais, exercícios práticos!",
+            "😴 **Durma bem**: o cérebro consolida o aprendizado durante o sono!"
+        ]
+        
+        specific_tips = {
+            "programação": [
+                "💻 **Pratique diariamente**: mesmo 15 minutos por dia fazem diferença!",
+                "🐛 **Depure com paciência**: cada erro é uma oportunidade de aprender!",
+                "🔨 **Projetos práticos**: teoria + prática = aprendizado sólido!",
+                "👥 **Comunidade**: participe de fóruns e grupos de estudo!"
+            ],
+            "banco de dados": [
+                "🗄️ **Modele antes de codificar**: desenhe o banco primeiro!",
+                "📊 **Dados de exemplo**: sempre teste com dados reais!",
+                "⚡ **Performance**: aprenda sobre índices e otimização!",
+                "🔍 **Explore**: use ferramentas visuais para entender melhor!"
+            ]
+        }
+        
+        tips = general_tips.copy()
+        if subject:
+            subject_lower = subject.lower()
+            if any(lang in subject_lower for lang in ['python', 'javascript', 'programação', 'programming']):
+                tips.extend(specific_tips['programação'])
+            elif any(db in subject_lower for db in ['postgresql', 'sql', 'banco', 'database']):
+                tips.extend(specific_tips['banco de dados'])
+        
+        selected_tips = random.sample(tips, min(4, len(tips)))
+        response = "💡 **Dicas de estudo da Lumi:**\n\n"
+        response += "\n\n".join(selected_tips)
+        response += "\n\n🌟 **Lembre-se**: consistência supera intensidade! Pequenos passos todos os dias levam a grandes conquistas!"
+        response += "\n\n✨ **Quer que eu crie um cronograma de estudos personalizado para você?** É só me dizer o assunto!"
+        
+        return response
 
     # Mantendo compatibilidade com métodos antigos
     def generate_response(self, message):
