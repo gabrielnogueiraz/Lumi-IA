@@ -13,10 +13,8 @@ def check_dependencies():
     """
     Verifica se todas as dependências necessárias estão instaladas
     """
-    missing_modules = []
-
-    # Lista de módulos necessários
-    required_modules = ["requests"]
+    missing_modules = []  # Lista de módulos necessários
+    required_modules = ["requests", "flask", "flask_cors", "google.generativeai"]
 
     for module in required_modules:
         try:
