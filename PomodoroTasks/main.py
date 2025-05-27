@@ -114,7 +114,7 @@ def main():
     # Se foi fornecida uma pergunta como argumento, processa e encerra
     if args.pergunta:
         print("\n🤖 Lumi processando sua solicitação...")
-        resposta = assistant.processar_pergunta(args.pergunta)
+        resposta = assistant.process_message(args.pergunta)
         print(f"\n{resposta}\n")
         return
 
@@ -170,7 +170,7 @@ def main():
 
             # Processa a entrada do usuário
             print("🤖 Processando...")
-            resposta = assistant.processar_pergunta(user_input)
+            resposta = assistant.process_message(user_input)
             print(f"\n{resposta}")
 
             contador_interacoes += 1
