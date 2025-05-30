@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-Task Handler Module for Lumi Assistant
+Task Handler Module for Lumi Assistant - VERSÃO SIMPLIFICADA E CORRIGIDA
 
 Handles all task-related operations with AI-powered responses
 """
@@ -21,314 +21,464 @@ class TaskHandler:
         self.personality = personality
         self.ai_engine = AIEngine()
 
-        # Advanced patterns for task title extraction
-        self.task_patterns = [
-            # Main pattern for "Add to my agenda, study postgresql today at 22:00"
-            r"(?:adicionar?|adicione|criar?|crie|incluir?|inclua|colocar?|coloque|agendar?|agende|marcar?|marque)\s+(?:na\s+(?:minha\s+)?(?:agenda|lista)\s*,?\s*)?(.+?)(?:\s+(?:hoje|amanhã|amanha|para|até|às?|as|em|na|no|dia|hora)\s+(?:\d+|segunda|terça|quarta|quinta|sexta|sábado|domingo)|$)",
-            # Patterns for direct commands with quotes
-            r'["\']([^"\']+)["\']',
-            # Patterns for "need to/have to/going to" + task
-            r"(?:preciso|tenho que|vou|quero|gostaria de)\s+(.+?)(?:\s+(?:hoje|amanhã|amanha|na|no|em|para|até|às?|as)\s+|$)",
-            # Pattern for tasks after colon or comma
-            r"[,:]\s*(.+?)(?:\s+(?:para|até|em|na|no|hoje|amanhã|às?|as)\s+|$)",
-            # More specific pattern to capture main action
-            r"(?:fazer|estudar|comprar|ligar|enviar|terminar|completar|preparar|organizar|planejar)\s+(.+?)(?:\s+(?:hoje|amanhã|na|no|em|para|até|às?|as)\s+|$)",
-            # Generic improved pattern (last resort)
-            r"(?:tarefa|task|atividade)\s+(.+?)(?:\s+(?:para|até|em|na|no|hoje|amanhã|às?|as)\s+|$)",
-        ]
-
-        # Improved filters for title cleaning
-        self.noise_words = [
-            "adicionar", "adicione", "criar", "crie", "nova", "novo", "tarefa", "task",
-            "preciso", "tenho", "que", "vou", "quero", "gostaria", "favor", "por",
-            "fazer", "incluir", "na", "nas", "lista", "tarefas", "minha", "meu",
-            "agenda", "hoje", "amanhã", "amanha", "às", "as", "em", "no", "da", "do", "a", "o",
-        ]
-
     def process_add_task(self, message):
         """
-        Add task with AI-powered personalized response
+        Add task(s) with improved parsing
         """
         try:
-            # Extract task title
-            task_title = self._extract_task_title_intelligent(message)
+            # PRIMEIRO: Verifica se é múltiplas tarefas
+            multiple_tasks = self._extract_multiple_tasks_improved(message)
 
-            if not task_title or len(task_title.strip()) < 3:
+            if multiple_tasks and len(multiple_tasks) > 1:
+                return self._process_multiple_tasks(message, multiple_tasks)
+
+            # SEGUNDO: Processamento para tarefa única MELHORADO
+            task_info = self._extract_single_task_improved(message)
+
+            if (
+                not task_info
+                or not task_info.get("title")
+                or len(task_info["title"].strip()) < 3
+            ):
                 return self.ai_engine.generate_task_response(
-                    "solicitando mais detalhes sobre uma tarefa", 
-                    message
+                    "solicitando mais detalhes sobre uma tarefa", message
                 )
 
-            # Add the task
-            success = self.task_manager.add_task(task_title)
-
-            if success:
-                # Update context
-                self.personality.user_context["last_task_added"] = task_title
-                self.personality.user_context["current_focus"] = task_title
-
-                # Generate AI-powered response
-                return self.ai_engine.generate_task_response(
-                    "adicionar", 
-                    message, 
-                    {"title": task_title}
-                )
-            else:
-                return self.ai_engine.generate_task_response(
-                    "tendo dificuldade para adicionar a tarefa", 
-                    message
-                )
-
-        except Exception as e:
-            return f"😅 Tive uma pequena dificuldade técnica para adicionar a tarefa, mas vamos tentar novamente! (Erro: {str(e)})"
-
-    def process_list_tasks(self, message):
-        """
-        List tasks with AI-enhanced humanized presentation
-        """
-        try:
-            tasks = self.task_manager.list_tasks()
-
-            if not tasks:
-                return self.ai_engine.generate_task_response(
-                    "verificando uma lista vazia de tarefas", 
-                    message
-                )
-
-            # Generate AI-powered introduction
-            intro_response = self.ai_engine.generate_task_response(
-                "listando tarefas", 
-                message
+            # Adiciona a tarefa
+            success = self.task_manager.add_task(
+                task_info["title"],
+                date=task_info.get("date"),
+                time=task_info.get("time"),
             )
 
-            response = intro_response + "\n\n"
-
-            # List tasks with friendly formatting
-            for i, task in enumerate(tasks, 1):
-                status_emoji = "✅" if task.get("completed", False) else "📌"
-                priority_indicator = ""
-
-                # Add priority indicator based on keywords
-                task_lower = task["title"].lower()
-                if any(
-                    word in task_lower
-                    for word in ["urgente", "importante", "prioridade"]
-                ):
-                    priority_indicator = " 🔥"
-
-                response += f"{status_emoji} {i}. {task['title']}{priority_indicator}\n"
-
-            # Add motivational statistics
-            completed_count = sum(1 for task in tasks if task.get("completed", False))
-            total_count = len(tasks)
-            pending_count = total_count - completed_count
-
-            if completed_count > 0:
-                response += f"\n🎯 Progresso: {completed_count}/{total_count} tarefas concluídas!"
-
-            if pending_count > 0:
-                response += f"\n⚡ {pending_count} tarefa(s) aguardando sua atenção!"
-
-            # Contextual tip
-            if pending_count > 5:
-                response += "\n\n💡 Dica: Que tal focar nas 3 mais importantes primeiro?"
-            elif pending_count <= 2:
-                response += "\n\n🌟 Você está quase lá! Foco total!"
-
-            return response
-
-        except Exception as e:
-            return f"😅 Tive um problema para acessar sua lista de tarefas. Vamos tentar novamente? (Erro: {str(e)})"
-
-    def process_complete_task(self, message):
-        """
-        Mark task as completed with AI-powered celebration
-        """
-        try:
-            # Extract task identifier (number or name)
-            task_identifier = self._extract_task_identifier(message)
-
-            if not task_identifier:
-                return self.ai_engine.generate_task_response(
-                    "precisando identificar qual tarefa foi concluída", 
-                    message
-                )
-
-            # Try to mark as completed
-            success, task_title = self.task_manager.complete_task(task_identifier)
-
             if success:
+                # Update context with AWARENESS
+                self._update_context("task_added", task_info["title"], True)
+
                 return self.ai_engine.generate_task_response(
-                    "celebrando a conclusão de", 
-                    message, 
-                    {"title": task_title}
+                    "adicionar",
+                    message,
+                    {"title": task_info["title"], "confirmed": True},
                 )
             else:
+                self._update_context("task_add_failed", task_info["title"], False)
                 return self.ai_engine.generate_task_response(
-                    "não conseguindo encontrar a tarefa para concluir", 
-                    message
+                    "tendo dificuldade para adicionar a tarefa", message
                 )
 
         except Exception as e:
-            return f"😅 Ops! Tive dificuldade para marcar a tarefa como concluída. Pode tentar novamente? (Erro: {str(e)})"
+            self._update_context("task_add_error", "", False)
+            return f"😅 Tive uma pequena dificuldade técnica para adicionar a tarefa, mas vamos tentar novamente! (Erro: {str(e)})"
 
-    def process_remove_task(self, message):
+    def _extract_single_task_improved(self, message):
         """
-        Remove task with AI-powered confirmation
+        NOVA VERSÃO: Extração inteligente de tarefa única CORRIGIDA
         """
-        try:
-            # Extract task identifier
-            task_identifier = self._extract_task_identifier(message)
+        # Padrões mais específicos e organizados
+        patterns = [
+            # Padrão 1: "Preciso estudar minecraft hoje as 15:00"
+            r"(?:preciso|tenho que|vou)\s+(.+?)\s+(?:hoje|amanhã)\s+(?:às?|as)\s+(\d{1,2}[:h]\d{0,2})",
+            # Padrão 2: "Adicione estudar minecraft às 15:00"
+            r"(?:adicione?|adicionar)\s+(.+?)\s+(?:às?|as)\s+(\d{1,2}[:h]\d{0,2})",
+            # Padrão 3: "Estudar minecraft hoje às 15:00"
+            r"^(?!.*(?:adicionar|adicione|preciso adicionar|que são))(.+?)\s+(?:hoje|amanhã)\s+(?:às?|as)\s+(\d{1,2}[:h]\d{0,2})",
+            # Padrão 4: Após "adicione na minha agenda:"
+            r"(?:adicione?|adicionar)\s+(?:na|à)\s+(?:minha\s+)?agenda[,:]\s*(.+?)(?:\s+(?:às?|as)\s+(\d{1,2}[:h]\d{0,2}))?",
+            # Padrão 5: Genérico sem horário
+            r"(?:preciso|tenho que|vou|adicione?)\s+(.+?)(?:\s+(?:hoje|amanhã|para))?$",
+        ]
 
-            if not task_identifier:
-                return self.ai_engine.generate_task_response(
-                    "precisando identificar qual tarefa remover", 
-                    message
-                )
-
-            # Try to remove
-            success, task_title = self.task_manager.remove_task(task_identifier)
-
-            if success:
-                return self.ai_engine.generate_task_response(
-                    "removendo", 
-                    message, 
-                    {"title": task_title}
-                )
-            else:
-                return self.ai_engine.generate_task_response(
-                    "não conseguindo encontrar a tarefa para remover", 
-                    message
-                )
-
-        except Exception as e:
-            return f"😅 Tive dificuldade para remover a tarefa. Pode tentar novamente? (Erro: {str(e)})"
-
-    def process_edit_task(self, message):
-        """
-        Process task editing (future functionality)
-        """
-        return self.ai_engine.generate_task_response(
-            "explorando funcionalidades de edição", 
-            message
-        )
-
-    def _extract_task_title_intelligent(self, message):
-        """
-        Intelligent task title extraction using multiple patterns
-        """
         message_clean = message.strip()
 
-        # First, try regex patterns
-        for pattern in self.task_patterns:
+        for pattern in patterns:
             match = re.search(pattern, message_clean, re.IGNORECASE)
             if match:
                 title = match.group(1).strip()
-                # Remove unnecessary words
-                title = self._clean_task_title(title)
-                if len(title) > 3:  # Title must have at least 3 characters
-                    return title
+                time = match.group(2) if len(match.groups()) > 1 else None
 
-        # If not found with regex, try simple semantic analysis
-        words = message_clean.lower().split()
+                # Limpa o título
+                title = self._clean_task_title_improved(title)
 
-        # Remove noise words from beginning
-        start_index = 0
-        for i, word in enumerate(words):
-            if word not in self.noise_words:
-                start_index = i
-                break
+                # Valida se o título faz sentido
+                if self._is_valid_task_title(title):
+                    from datetime import datetime
 
-        # Rebuild title
-        title_words = words[start_index:]
-        if title_words:
-            title = " ".join(title_words)
-            title = self._clean_task_title(title)
-            if len(title) > 3:
-                return title
+                    return {
+                        "title": title,
+                        "time": time,
+                        "date": datetime.now().strftime("%d/%m/%Y"),
+                    }
 
-        # As last resort, use entire message
-        fallback_title = self._clean_task_title(message_clean)
-        return fallback_title if len(fallback_title) > 3 else "Nova tarefa"
+        return None
 
-    def _clean_task_title(self, title):
+    def _clean_task_title_improved(self, title):
         """
-        Clean task title removing noise and formatting appropriately - CORRECTED VERSION
+        NOVA VERSÃO: Limpeza melhorada de título
         """
         if not title:
             return ""
 
-        # Remove extra quotes and spaces
+        # Remove aspas e espaços extras
         title = title.strip("\"'").strip()
 
-        # Remove noise words from beginning and end
-        words = title.lower().split()
-        original_words = title.split()  # Keep original capitalization
-        filtered_words = []
+        # Remove palavras de ruído específicas do FINAL
+        noise_endings = [
+            r"\s+(?:na|à)\s+(?:minha\s+)?agenda$",
+            r"\s+(?:para|até|em)\s+(?:hoje|amanhã)$",
+            r"\s+(?:hoje|amanhã)$",
+        ]
 
-        # Skip noise words at beginning
-        start_idx = 0
-        for i, word in enumerate(words):
-            if word not in self.noise_words:
-                start_idx = i
-                break
+        for pattern in noise_endings:
+            title = re.sub(pattern, "", title, flags=re.IGNORECASE)
 
-        # Get relevant words, stopping BEFORE temporal indicators
-        for i in range(start_idx, len(words)):
-            word = words[i]
+        # Remove palavras de ruído do INÍCIO
+        noise_beginnings = [
+            r"^(?:adicionar|adicione|incluir|inclua|anotar|marcar)\s+",
+            r"^(?:que|são|tarefas?)\s*[:\-]?\s*",
+        ]
 
-            # IMPROVEMENT: Stop BEFORE finding time/date indicators
-            if word in [
-                "hoje", "amanhã", "amanha", "para", "às", "as", "em", "na", "no",
-                "dia", "hora", "ontem", "semana", "mes", "ano",
-            ]:
-                break
+        for pattern in noise_beginnings:
+            title = re.sub(pattern, "", title, flags=re.IGNORECASE)
 
-            # IMPROVEMENT: Stop BEFORE numbers indicating time (22:00, 14h, etc.)
-            if re.search(r"\d+[:h]", word) or (word.isdigit() and len(word) <= 2):
-                break
-
-            # Remove only small unnecessary articles, but not at beginning
-            if word not in ["a", "o", "de", "da", "do"] or len(filtered_words) == 0:
-                filtered_words.append(original_words[i])  # Keep original capitalization
-
-        if filtered_words:
-            title = " ".join(filtered_words)
-
-        # Remove residual temporal indicators from end
-        title = re.sub(
-            r"\s+(hoje|amanhã|amanha|para|às?|as|em|na|no|dia|hora).*$",
-            "",
-            title,
-            flags=re.IGNORECASE,
-        )
-
-        # Proper capitalization of first letter only
+        # Capitaliza primeira letra
         title = title.strip()
         if title and len(title) > 0:
             title = title[0].upper() + title[1:]
 
         return title
 
+    def _is_valid_task_title(self, title):
+        """
+        Valida se o título da tarefa faz sentido
+        """
+        if not title or len(title) < 3:
+            return False
+
+        # Lista de títulos inválidos comuns
+        invalid_titles = [
+            "minha agenda",
+            "na agenda",
+            "agenda",
+            "tarefa",
+            "tarefas",
+            "que são",
+            "são",
+            "algumas",
+            "hoje",
+            "amanhã",
+            "às",
+            "as",
+        ]
+
+        title_lower = title.lower()
+        for invalid in invalid_titles:
+            if title_lower == invalid or title_lower.startswith(invalid + " "):
+                return False
+
+        return True
+
+    def _extract_multiple_tasks_improved(self, message):
+        """
+        NOVA VERSÃO: Extração melhorada de múltiplas tarefas
+        """
+        # Detecta padrão de lista numerada
+        list_pattern = r"(?:que são|são|tarefas?)[:\s]*(.+?)(?=\s*$)"
+        list_match = re.search(list_pattern, message, re.IGNORECASE)
+
+        if not list_match:
+            return []
+
+        tasks_text = list_match.group(1)
+
+        # Extrai tarefas numeradas
+        task_pattern = r"(\d+)\.\s*([^,\d]+?)(?=\s*(?:\d+\.|$|,\s*\d+))"
+        matches = re.findall(task_pattern, tasks_text, re.IGNORECASE)
+
+        tasks = []
+        for num, task_text in matches:
+            task_info = self._parse_single_task_from_text(task_text.strip())
+            if task_info and self._is_valid_task_title(task_info["title"]):
+                tasks.append(task_info)
+
+        return tasks if len(tasks) > 1 else []
+
+    def _parse_single_task_from_text(self, text):
+        """
+        Analisa uma única tarefa extraída de uma lista
+        """
+        # Padrões para extrair título, horário e data
+        time_patterns = [r"(?:às?|as)\s*(\d{1,2}[:h]\d{0,2})", r"(\d{1,2}:\d{2})"]
+
+        time = None
+        clean_title = text
+
+        # Extrai horário
+        for pattern in time_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                time = match.group(1)
+                clean_title = re.sub(pattern, "", text, flags=re.IGNORECASE).strip()
+                break
+
+        # Remove conectores temporais
+        clean_title = re.sub(
+            r"\s*(?:hoje|amanhã|para|até|em|na|no)\s*",
+            " ",
+            clean_title,
+            flags=re.IGNORECASE,
+        ).strip()
+
+        # Remove palavras de início desnecessárias
+        clean_title = re.sub(
+            r"^(?:tenho|preciso|vou|que)\s+", "", clean_title, flags=re.IGNORECASE
+        ).strip()
+
+        # Capitaliza
+        if clean_title:
+            clean_title = clean_title[0].upper() + clean_title[1:]
+
+        from datetime import datetime
+
+        return {
+            "title": clean_title,
+            "time": time,
+            "date": datetime.now().strftime("%d/%m/%Y"),
+        }
+
+    def _process_multiple_tasks(self, message, tasks):
+        """
+        Processa múltiplas tarefas - SIMPLIFICADO
+        """
+        try:
+            added_tasks = []
+            failed_tasks = []
+
+            for task_info in tasks:
+                success = self.task_manager.add_task(
+                    task_info["title"],
+                    date=task_info.get("date"),
+                    time=task_info.get("time"),
+                )
+
+                if success:
+                    added_tasks.append(task_info)
+                else:
+                    failed_tasks.append(task_info)
+
+            # Update context
+            self._update_context(
+                "multiple_tasks_added",
+                f"{len(added_tasks)} tarefas",
+                len(failed_tasks) == 0,
+            )
+
+            if len(added_tasks) == len(tasks):
+                # Todas adicionadas com sucesso
+                response = f"✅ **Perfeito!** Adicionei todas as {len(added_tasks)} tarefas na sua agenda:\n\n"
+
+                for i, task in enumerate(added_tasks, 1):
+                    time_info = f" às {task['time']}" if task.get("time") else ""
+                    response += f"📌 {i}. {task['title']}{time_info}\n"
+
+                response += f"\n🎯 **Status:** {len(added_tasks)} nova(s) tarefa(s) adicionada(s)!\n"
+                response += "✨ **Organização:** Sua agenda está atualizada!\n\n"
+                response += "🌟 Que tal começarmos pela primeira? 💪"
+
+                return response
+
+            elif len(added_tasks) > 0:
+                # Algumas adicionadas
+                response = f"✅ Consegui adicionar {len(added_tasks)} de {len(tasks)} tarefas:\n\n"
+
+                for i, task in enumerate(added_tasks, 1):
+                    time_info = f" às {task['time']}" if task.get("time") else ""
+                    response += f"📌 {i}. {task['title']}{time_info}\n"
+
+                if failed_tasks:
+                    response += f"\n⚠️ {len(failed_tasks)} tarefa(s) não puderam ser adicionadas."
+
+                return response
+            else:
+                return "😅 Tive dificuldade para adicionar as tarefas. Pode tentar uma por vez?"
+
+        except Exception as e:
+            return f"😅 Problema ao processar múltiplas tarefas: {str(e)}"
+
+    def process_list_tasks(self, message):
+        """
+        Lista tarefas - SIMPLIFICADO
+        """
+        try:
+            tasks = self.task_manager.list_tasks()
+
+            # Update context
+            self._update_context("list_tasks", f"{len(tasks)} tarefas", True)
+
+            if not tasks:
+                return self._generate_empty_agenda_response()
+
+            return self._generate_tasks_list_response(tasks)
+
+        except Exception as e:
+            self._update_context("list_tasks_error", "", False)
+            return f"😅 Problema para acessar sua lista. Erro: {str(e)}"
+
+    def _generate_empty_agenda_response(self):
+        """
+        Gera resposta para agenda vazia
+        """
+        responses = [
+            "🎉 Sua agenda está completamente livre! ✨\n\n**Estado atual:** Nenhuma tarefa pendente\n\nVocê pode:\n📝 Adicionar novas tarefas\n🎯 Focar em planejamento\n💡 Ser criativo\n\n**Quer adicionar uma tarefa?**",
+            "✨ Lista de tarefas limpa! 🌟\n\n**Status:** 0 tarefas na agenda\n\nMomento perfeito para:\n🚀 Planejar próximos passos\n📋 Definir novas metas\n💪 Relaxar\n\n**Pronto para algo novo?**",
+        ]
+
+        import random
+
+        return random.choice(responses)
+
+    def _generate_tasks_list_response(self, tasks):
+        """
+        Gera resposta com lista de tarefas
+        """
+        import random
+
+        intro = f"📋 Sua agenda tem {len(tasks)} tarefa(s):\n\n"
+
+        task_list = ""
+        completed_count = 0
+
+        for i, task in enumerate(tasks, 1):
+            status = "✅" if task.get("completed", False) else "📌"
+
+            if task.get("completed", False):
+                completed_count += 1
+
+            time_info = ""
+            if task.get("time"):
+                time_info += f" às {task['time']}"
+            if task.get("date"):
+                time_info += f" - {task['date']}"
+
+            task_list += f"{status} {i}. {task['title']}{time_info}\n"
+
+        pending_count = len(tasks) - completed_count
+
+        status_info = f"\n📊 **Status:** {pending_count} pendente(s)"
+        if completed_count > 0:
+            status_info += f", {completed_count} concluída(s)"
+
+        motivational = [
+            "\n\n🚀 **Qual vamos atacar primeiro?**",
+            "\n\n💪 **Vamos começar?**",
+            "\n\n✨ **Pronto para conquistar tudo?**",
+        ]
+
+        return intro + task_list + status_info + random.choice(motivational)
+
+    def process_complete_task(self, message):
+        """
+        Marca tarefa como concluída - SIMPLIFICADO
+        """
+        try:
+            task_identifier = self._extract_task_identifier(message)
+
+            if not task_identifier:
+                return (
+                    "😊 Qual tarefa você concluiu? Me diga o número ou nome da tarefa."
+                )
+
+            success, task_title = self.task_manager.complete_task(task_identifier)
+
+            if success:
+                self._update_context("task_completed", task_title, True)
+                return f"🎉 **Parabéns!** Tarefa '{task_title}' concluída! Você está arrasando! 💪"
+            else:
+                self._update_context("task_complete_failed", "", False)
+                return (
+                    "😅 Não encontrei essa tarefa. Pode me dar o número ou nome exato?"
+                )
+
+        except Exception as e:
+            return f"😅 Problema para concluir tarefa: {str(e)}"
+
+    def process_remove_task(self, message):
+        """
+        Remove tarefa - SIMPLIFICADO
+        """
+        try:
+            # Verifica remoção em massa
+            if any(word in message.lower() for word in ["todas", "tudo", "all"]):
+                return self._process_remove_all_tasks()
+
+            task_identifier = self._extract_task_identifier(message)
+
+            if not task_identifier:
+                return "😊 Qual tarefa você quer remover? Me diga o número ou nome."
+
+            success, task_title = self.task_manager.remove_task(task_identifier)
+
+            if success:
+                self._update_context("task_removed", task_title, True)
+                return f"✅ **Removido!** Tarefa '{task_title}' foi retirada da sua agenda!"
+            else:
+                self._update_context("task_remove_failed", "", False)
+                return "😅 Não encontrei essa tarefa. Pode verificar o número ou nome?"
+
+        except Exception as e:
+            return f"😅 Problema para remover tarefa: {str(e)}"
+
+    def _process_remove_all_tasks(self):
+        """
+        Remove todas as tarefas
+        """
+        try:
+            current_tasks = self.task_manager.list_tasks()
+            task_count = len(current_tasks)
+
+            if task_count == 0:
+                return "😊 Sua agenda já está vazia! Quer adicionar algumas tarefas?"
+
+            # Remove todas
+            removed_count = 0
+            for task in current_tasks:
+                success, _ = self.task_manager.remove_task(task["id"])
+                if success:
+                    removed_count += 1
+
+            self._update_context("all_tasks_removed", f"{removed_count} tarefas", True)
+
+            if removed_count == task_count:
+                return f"✅ **Pronto!** Removi todas as {task_count} tarefas!\n\n🎯 **Agenda limpa!** Agora você pode começar do zero! 🚀"
+            else:
+                return f"⚠️ Consegui remover {removed_count} de {task_count} tarefas."
+
+        except Exception as e:
+            return f"😅 Problema para remover todas: {str(e)}"
+
+    def process_edit_task(self, message):
+        """
+        Edita tarefa (funcionalidade futura)
+        """
+        return "🔧 Funcionalidade de edição em desenvolvimento! Por enquanto, você pode remover e adicionar novamente."
+
     def _extract_task_identifier(self, message):
         """
-        Extract task identifier (number or name) from message
+        Extrai identificador da tarefa (número ou nome)
         """
-        # Look for numbers
+        # Procura números
         number_match = re.search(r"\b(\d+)\b", message)
         if number_match:
             return int(number_match.group(1))
 
-        # Look for names in quotes
+        # Procura nomes entre aspas
         quote_match = re.search(r'["\']([^"\']+)["\']', message)
         if quote_match:
             return quote_match.group(1)
 
-        # Try to extract using patterns similar to adding task
+        # Padrões específicos
         patterns = [
-            r"(?:concluir|finalizar|completar|terminar|concluída|feita)\s+(.+?)(?:\s+(?:hoje|agora|já)\s*|$)",
-            r"(?:remover|deletar|excluir|tirar)\s+(.+?)(?:\s+(?:da lista|das tarefas)\s*|$)",
-            r"(?:tarefa|task)\s+(.+?)(?:\s+(?:concluída|removida|deletada)\s*|$)",
+            r"(?:concluir|terminei|feito|pronto)\s+(.+?)(?:\s+(?:hoje|agora)\s*|$)",
+            r"(?:remover|deletar|tirar)\s+(.+?)(?:\s+(?:da lista)\s*|$)",
         ]
 
         for pattern in patterns:
@@ -337,3 +487,11 @@ class TaskHandler:
                 return match.group(1).strip()
 
         return None
+
+    def _update_context(self, action, details, success):
+        """
+        Atualiza contexto da personalidade - HELPER
+        """
+        self.personality.user_context["last_action"] = action
+        self.personality.user_context["last_action_details"] = details
+        self.personality.user_context["last_action_success"] = success
