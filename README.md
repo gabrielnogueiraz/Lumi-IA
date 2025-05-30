@@ -99,7 +99,7 @@ Este projeto inclui documentação técnica abrangente para diferentes audiênci
 
 1. **Clone o repositório**:
 ```bash
-git clone https://github.com/seu-usuario/lumi-AI.git
+git clone https://github.com/gabrielnogueiraz/lumi-AI.git
 cd lumi-AI
 ```
 
@@ -337,6 +337,6 @@ Seja você um usuário buscando produtividade ou um desenvolvedor procurando uma
 
 **Feito com ❤️ e IA avançada**
 
-[⭐ Star no GitHub](https://github.com/seu-usuario/lumi-AI) • [📖 Documentação](TECHNICAL_DOCUMENTATION.md) • [🐛 Reportar Bug](https://github.com/seu-usuario/lumi-AI/issues) • [💡 Sugerir Feature](https://github.com/seu-usuario/lumi-AI/issues)
+[⭐ Star no GitHub](https://github.com/gabrielnogueiraz/lumi-AI) • [📖 Documentação](TECHNICAL_DOCUMENTATION.md) • [🐛 Reportar Bug](https://github.com/gabrielnogueiraz/lumi-AI/issues) • [💡 Sugerir Feature](https://github.com/gabrielnogueiraz/lumi-AI/issues)
 
 </div>
