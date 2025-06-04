@@ -54,6 +54,8 @@ try:
     task_manager = TaskManager()
     reports_generator = ReportsGenerator(task_manager)
     lumi_assistant = LumiAssistant(task_manager, reports_generator)
+    logger.info("✅ Lumi integrada com sistema de tarefas reais")
+    
     logger.info("✅ Componentes da Lumi inicializados com sucesso")
 except Exception as e:
     logger.error(f"❌ Erro ao inicializar componentes: {e}")
@@ -144,34 +146,29 @@ def chat():
 
         # Valida a mensagem
         if not user_message:
-            return jsonify({"error": "Mensagem não pode estar vazia", "status": "error"}), 400
-
-        # Processa a requisição com a Enhanced Lumi
+            return jsonify({"error": "Mensagem não pode estar vazia", "status": "error"}), 400        # Processa a requisição com a Lumi
         logger.info(f"📨 Processando {action} para usuário {user_id}: {user_message[:50]}...")
         
-        # Importa a Enhanced Lumi
+        # Prepara dados da requisição
+        request_data = {
+            "userId": user_id,
+            "message": user_message,
+            "context": context,
+            "action": action
+        }
+        
+        # Processa com Lumi usando novo método process_request
         try:
-            from core.enhanced_lumi import enhanced_lumi
-            
-            # Prepara dados da requisição
-            request_data = {
-                "userId": user_id,
-                "message": user_message,
-                "context": context,
-                "action": action
-            }
-            
-            # Processa com Enhanced Lumi
-            lumi_response = enhanced_lumi.process_request(request_data)
-            
-        except ImportError:
-            # Fallback para sistema legado
-            logger.warning("Enhanced Lumi não disponível, usando sistema legado")
+            lumi_response = lumi_assistant.process_request(request_data)
+        except AttributeError:
+            # Fallback para método antigo se process_request não existir
+            logger.warning("Usando método legado de processamento")
             lumi_response = {
                 "response": lumi_assistant.process_message(user_message),
                 "mood": "encouraging",
                 "suggestions": [],
-                "actions": []
+                "actions": [],
+                "insights": []
             }
 
         # Atualiza dados da sessão
@@ -183,9 +180,7 @@ def chat():
             }
 
         session_data["active_sessions"][session_id]["message_count"] += 1
-        session_data["active_sessions"][session_id]["last_activity"] = datetime.now().isoformat()
-
-        # Resposta compatível com PomodoroTasks API
+        session_data["active_sessions"][session_id]["last_activity"] = datetime.now().isoformat()        # Resposta compatível com PomodoroTasks API
         return jsonify({
             "status": "success",
             "response": lumi_response["response"],
@@ -193,13 +188,15 @@ def chat():
             "suggestions": lumi_response.get("suggestions", []),
             "actions": lumi_response.get("actions", []),
             "insights": lumi_response.get("insights", []),
+            "garden_status": lumi_response.get("garden_status"),
+            "user_stats": lumi_response.get("user_stats"),
             "session_id": session_id,
             "timestamp": datetime.now().isoformat(),
             "session_info": {
                 "message_count": session_data["active_sessions"][session_id]["message_count"],
                 "user_id": user_id
             }
-        }        )
+        })
 
     except Exception as e:
         logger.error(f"❌ Erro no chat: {e}")
