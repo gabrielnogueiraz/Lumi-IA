@@ -7,6 +7,7 @@ from datetime import datetime
 from core.database_manager import db_manager
 from core.ai_engine import AIEngine
 from core.context_analyzer import ContextAnalyzer
+from core.conversation_memory import get_conversation_memory
 from services.task_intelligence import TaskIntelligenceService
 from services.mood_detector import MoodDetectorService
 import structlog
@@ -14,6 +15,13 @@ import structlog
 logger = structlog.get_logger(__name__)
 
 router = APIRouter()
+
+# Instâncias dos serviços
+ai_engine = AIEngine()
+context_analyzer = ContextAnalyzer()
+task_intelligence = TaskIntelligenceService(db_manager)
+mood_detector = MoodDetectorService(db_manager)
+conversation_memory = get_conversation_memory()
 
 class ChatRequest(BaseModel):
     user_id: Union[str, int] = Field(..., description="ID do usuário")
@@ -38,72 +46,69 @@ class ChatRequest(BaseModel):
         if v is None:
             return None
         elif isinstance(v, str):
-            # Converte string para dict com chave padrão
             return {"legacy_context": v, "type": "string_format"}
         elif isinstance(v, dict):
             return v
         else:
-            # Para outros tipos, converte para string e depois dict
-            return {"legacy_context": str(v), "type": "converted"}
-    
-    def get_context_value(self) -> Optional[str]:
-        """Método helper para extrair valor do contexto independente do formato"""
-        if self.context is None:
-            return None
-        elif isinstance(self.context, dict):
-            return self.context.get("legacy_context", str(self.context))
-        else:
-            return str(self.context)
+            try:
+                return {"processed_context": str(v), "type": "other"}
+            except:
+                return None
 
 class ChatResponse(BaseModel):
     response: str
-    mood: str
-    personality_tone: str
-    actions: List[Dict[str, Any]]
-    insights: List[str]
-    suggestions: List[str]
-    emotional_context: Dict[str, Any]
-    processing_time: float
-
-# Initialize services
-ai_engine = AIEngine()
-context_analyzer = ContextAnalyzer()
-task_intelligence = TaskIntelligenceService(db_manager)
-mood_detector = MoodDetectorService(db_manager)
+    mood: str = "neutral"
+    personality_tone: str = "friendly"
+    actions: List[Dict[str, Any]] = []
+    insights: List[str] = []
+    suggestions: List[str] = []
+    emotional_context: Dict[str, Any] = {}
+    processing_time: float = 0.0
+    conversation_id: Optional[str] = None
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat_with_lumi(request: ChatRequest):
     """
-    Endpoint principal para chat com a Lumi AI
+    🤖 ENDPOINT PRINCIPAL: Conversa com a Lumi AI
+    
+    A Lumi agora possui:
+    - ✅ Memória persistente de conversas
+    - ✅ Criação inteligente de tarefas
+    - ✅ Personalidade adaptativa
+    - ✅ Contexto completo do usuário
     """
+    start_time = datetime.now()
+    
     try:
-        start_time = datetime.now()
-        
-        # Log detalhado da requisição
-        logger.info(f"🎯 CHAT REQUEST START", extra={
-            "user_id": request.user_id,
-            "message_length": len(request.message),            "has_context": request.context is not None,
-            "timestamp": start_time.isoformat()
-        })
-        
-        logger.info(f"Processing chat request for user {request.user_id}: {request.message[:50]}...")
-        
-        # Validate user_id format
+        logger.info(f"🗣️ Nova conversa iniciada com usuário {request.user_id}: '{request.message}'")
+          # Validar user_id como UUID
+        import uuid
         try:
-            # Check for invalid values first
             if request.user_id in ["None", "null", "undefined", "", "0"]:
                 logger.error(f"Invalid user_id value: {request.user_id}")
-                raise HTTPException(status_code=400, detail="user_id é obrigatório e deve ser um número válido")
+                raise HTTPException(status_code=400, detail="user_id é obrigatório e deve ser um UUID válido")
             
-            user_id_int = int(request.user_id)
-            if user_id_int <= 0:
-                logger.error(f"Invalid user_id: {request.user_id} (negative or zero)")
-                raise HTTPException(status_code=400, detail="user_id deve ser um número positivo")
+            uuid.UUID(request.user_id)
         except ValueError as e:
             logger.error(f"Invalid user_id format: {request.user_id} - {e}")
-            raise HTTPException(status_code=400, detail="user_id deve ser um número válido")
+            raise HTTPException(status_code=400, detail="user_id deve ser um UUID válido")
         
         logger.info(f"✅ User ID validation passed: {request.user_id}")
+        
+        # 🧠 CARREGAR MEMÓRIA DA CONVERSA
+        try:
+            logger.info(f"🧠 Carregando memória da conversa para usuário {request.user_id}")
+            conversation_context = await conversation_memory.get_conversation_context(request.user_id)
+            user_name = conversation_context.get('user_name')
+            recent_messages = conversation_context.get('recent_messages', [])
+            
+            logger.info(f"💾 Memória carregada: {len(recent_messages)} mensagens recentes")
+            if user_name:
+                logger.info(f"👤 Nome do usuário: {user_name}")
+        except Exception as e:
+            logger.error(f"❌ Erro ao carregar memória da conversa: {e}")
+            conversation_context = {'recent_messages': [], 'user_name': None}
+            user_name = None
         
         # Fetch comprehensive user context
         try:
@@ -115,16 +120,15 @@ async def chat_with_lumi(request: ChatRequest):
             user_context = {"error": f"Database error: {str(e)}"}
         
         if "error" in user_context:
-            # Se usuário não existe, crie um contexto básico
             if "User not found" in user_context.get("error", ""):
                 logger.info(f"👤 User {request.user_id} not found, creating basic context")
                 user_context = await _create_basic_user_context(request.user_id)
             else:
                 logger.error(f"💥 Database error for user {request.user_id}: {user_context['error']}")
-                # Em vez de falhar, vamos usar contexto básico
                 logger.info(f"🔄 Using fallback basic context due to database error")
                 user_context = await _create_basic_user_context(request.user_id)
-          # Create default context if needed
+        
+        # Create default context if needed
         if not user_context.get("user_info"):
             logger.info(f"📝 Creating default context for user {request.user_id}")
             user_context = await _create_basic_user_context(request.user_id)
@@ -139,6 +143,19 @@ async def chat_with_lumi(request: ChatRequest):
                 logger.info(f"🎯 Tarefa detectada: {task_intent.title}")
                 # Criar tarefa automaticamente
                 response = await _handle_intelligent_task_creation(request.user_id, task_intent, user_context)
+                
+                # Salvar conversa na memória da Lumi
+                await conversation_memory.save_conversation(
+                    request.user_id, 
+                    request.message, 
+                    response.content,
+                    {
+                        "detected_context": "task_creation",
+                        "lumi_mood": "motivated",
+                        "topics": ["task_creation", "productivity"],
+                        "user_sentiment": "proactive"
+                    }
+                )
                 
                 processing_time = (datetime.now() - start_time).total_seconds()
                 response_data = _ensure_complete_response(response, {"mood": "motivated"}, processing_time)
@@ -155,17 +172,16 @@ async def chat_with_lumi(request: ChatRequest):
             logger.info(f"✅ Context analysis complete")
         except Exception as e:
             logger.error(f"❌ Context analysis error: {e}")
-            # Fallback to simple analysis
             context_analysis = _create_simple_context_analysis(request.message)
             logger.info(f"🔄 Using simple context analysis fallback")
-          # Detect current mood
+        
+        # Detect current mood
         try:
             logger.info(f"😊 Detecting mood")
             mood_analysis = await mood_detector.detect_current_mood(request.user_id, user_context)
             logger.info(f"✅ Mood detection complete: {mood_analysis.get('mood', 'unknown')}")
         except Exception as e:
             logger.error(f"❌ Mood detection error: {e}")
-            # Fallback mood
             mood_analysis = {"mood": "focused", "confidence": 0.5}
             logger.info(f"🔄 Using fallback mood: focused")
         
@@ -177,7 +193,7 @@ async def chat_with_lumi(request: ChatRequest):
             message_lower = request.message.lower()
             pending_queries = [
                 "tenho alguma tarefa", "tarefas pendentes", "o que preciso fazer",
-                "pendências", "tarefas para hoje", "minha agenda"
+                "pendências", "tarefas para hoje", "minha agenda", "lista de tarefas"
             ]
             
             if any(query in message_lower for query in pending_queries):
@@ -197,89 +213,88 @@ async def chat_with_lumi(request: ChatRequest):
                 logger.info(f"💡 Handling suggestions intent")
                 response = await _handle_suggestions_intent(request.user_id, context_analysis, user_context)
             else:
-                # General conversational response
-                logger.info(f"💬 Generating general conversational response")
-                response = await ai_engine.generate_response(user_context, request.message)
+                # 🧠 PERSONALIZAÇÃO: Usar memória para resposta mais contextual
+                enhanced_context = {**user_context}
+                enhanced_context.update({
+                    'conversation_memory': conversation_context,
+                    'user_name': user_name,
+                    'recent_messages': recent_messages
+                })
+                
+                logger.info(f"🤖 Generating contextualized response with memory")
+                response = await ai_engine.generate_response(enhanced_context, request.message)
             
             logger.info(f"✅ Response generated successfully")
+            
         except Exception as e:
             logger.error(f"❌ Response generation error: {e}")
             # Fallback response
-            response = _create_fallback_response(request.message, mood_analysis)
-            logger.info(f"🔄 Using fallback response")
+            greeting = f"Olá, {user_name}!" if user_name else "Olá!"
+            response = type('Response', (), {
+                'content': f"{greeting} Estou aqui para te ajudar! Como posso te auxiliar hoje? 😊",
+                'mood': 'encouraging',
+                'personality_tone': 'friendly',
+                'actions': [],
+                'insights': [],
+                'suggestions': ["Me conte sobre suas tarefas", "Precisa de ajuda com algo específico?"],
+                'emotional_context': {"fallback": True}
+            })()
         
-        # Update Lumi's memory with interaction
+        # 💾 SALVAR CONVERSA NA MEMÓRIA DA LUMI
         try:
-            logger.info(f"💾 Updating interaction memory")
-            await _update_interaction_memory(request.user_id, request.message, response, mood_analysis)
-            logger.info(f"✅ Memory updated successfully")
-        except Exception as e:
-            logger.error(f"❌ Memory update error: {e}")
-            logger.info(f"🔄 Continuing without memory update")
-            # Continue without updating memory
-        
-        processing_time = (datetime.now() - start_time).total_seconds()
-        
-        # Ensure response has all required fields
-        try:
-            logger.info(f"🔧 Ensuring complete response structure")
-            response_data = _ensure_complete_response(response, mood_analysis, processing_time)
-            logger.info(f"✅ Response structure validated")
-        except Exception as e:
-            logger.error(f"❌ Response structure error: {e}")
-            # Use absolute fallback
-            response_data = {
-                "response": "Olá! Como posso ajudar você hoje?",
-                "mood": "focused",
-                "personality_tone": "friendly",
-                "actions": [],
-                "insights": [],
-                "suggestions": ["Verificar tarefas", "Iniciar pomodoro"],
-                "emotional_context": {"fallback": True},
-                "processing_time": processing_time
-            }
-        
-        logger.info(f"🎉 Chat response generated for user {request.user_id} in {processing_time:.2f}s")
-        
-        # Final validation before return
-        try:
-            final_response = ChatResponse(**response_data)
-            logger.info(f"✅ Final response validation successful")
-            return final_response
-        except Exception as e:
-            logger.error(f"❌ Final response validation failed: {e}")
-            # Absolute minimal response
-            return ChatResponse(
-                response="Olá! Estou aqui para ajudar com sua produtividade.",
-                mood="focused",
-                personality_tone="friendly", 
-                actions=[],
-                insights=[],
-                suggestions=[],
-                emotional_context={},
-                processing_time=processing_time
+            await conversation_memory.save_conversation(
+                request.user_id,
+                request.message,
+                response.content,
+                {
+                    "detected_context": getattr(context_analysis, 'intent', 'general'),
+                    "lumi_mood": response.mood,
+                    "topics": getattr(context_analysis, 'topics', []),
+                    "user_sentiment": mood_analysis.get('mood', 'neutral')
+                }
             )
+        except Exception as e:
+            logger.error(f"❌ Erro ao salvar conversa na memória: {e}")
         
-    except HTTPException as he:
-        logger.error(f"🚨 HTTP Exception: {he.status_code} - {he.detail}")
+        # Update interaction memory
+        try:
+            await _update_interaction_memory(request.user_id, request.message, response, mood_analysis)
+        except Exception as e:
+            logger.error(f"❌ Interaction memory update error: {e}")
+        
+        # Prepare final response
+        processing_time = (datetime.now() - start_time).total_seconds()
+        response_data = _ensure_complete_response(response, mood_analysis, processing_time)
+        
+        logger.info(f"🎉 Response completed for user {request.user_id} in {processing_time:.2f}s")
+        
+        return ChatResponse(**response_data)
+        
+    except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"💥 Unexpected error in chat endpoint: {e}", extra={
-            "error_type": type(e).__name__,
-            "user_id": getattr(request, 'user_id', 'unknown'),
-            "message_preview": getattr(request, 'message', '')[:50] if hasattr(request, 'message') else 'unknown'
-        })
-        # Return a safe fallback response
+        processing_time = (datetime.now() - start_time).total_seconds()
+        logger.error(f"💥 Unexpected error in chat endpoint: {e}")
+        
         return ChatResponse(
             response="Ops! Algo deu errado. Tente novamente em alguns instantes.",
-            mood="neutral",
-            personality_tone="apologetic",
-            actions=[],
-            insights=[],
-            suggestions=["Tentar novamente", "Verificar conexão"],
-            emotional_context={"error": True, "fallback": True},
-            processing_time=0.1
+            mood="apologetic",
+            personality_tone="supportive",
+            processing_time=processing_time,
+            emotional_context={"error_occurred": True}
         )
+
+async def _create_basic_user_context(user_id: str) -> Dict[str, Any]:
+    """Create basic user context when user doesn't exist"""
+    return {
+        "user_info": {"id": user_id, "name": None, "created_at": datetime.now()},
+        "tasks_stats": {"total_tasks": 0, "completed_tasks": 0, "pending_tasks": 0},
+        "recent_activity": [],
+        "productivity_patterns": {},
+        "current_streak": 0,
+        "lumi_memory": None,
+        "today_pomodoros": []
+    }
 
 async def _handle_task_intent(user_id: str, context_analysis, user_context: Dict[str, Any]):
     """Handle task-related intents"""
@@ -401,24 +416,15 @@ async def _handle_analytics_intent(user_id: str, context_analysis, user_context:
     # Current streak
     current_streak = user_context.get("current_streak", 0)
     if current_streak > 0:
-        response_content += f"🔥 **Sequência:** {current_streak} dias consecutivos!\n"
+        response_content += f"**Sequência atual:** {current_streak} dias consecutivos! 🔥\n"
     
     # Recent achievements
-    if achievements:
-        latest_achievement = achievements[0]
-        response_content += f"🏆 **Conquista:** {latest_achievement['title']} - {latest_achievement['description']}\n"
+    if achievements.get("recent_milestones"):
+        response_content += f"**Conquistas recentes:** {len(achievements['recent_milestones'])} novos marcos!\n"
     
-    # Weekly trend
-    weekly_trend = analytics.weekly_trends.get("trend", "stable")
-    if weekly_trend == "improving":
-        response_content += "📈 Sua produtividade está melhorando esta semana!"
-    elif weekly_trend == "declining":
-        response_content += "📉 Vamos ajustar a estratégia para melhorar os resultados"
-    else:
-        response_content += "📊 Sua produtividade está estável"
+    response_content += "\nContinue assim! Você está no caminho certo! 🎯"
     
     return type('Response', (), {
-        'content': response_content,
         'mood': 'analytical',
         'personality_tone': 'informative',
         'actions': [{"type": "analytics_provided", "data": analytics.__dict__}],
@@ -476,156 +482,40 @@ async def _handle_suggestions_intent(user_id: str, context_analysis, user_contex
 async def _update_interaction_memory(user_id: str, message: str, response, mood_analysis: Dict[str, Any]):
     """Update Lumi's interaction memory"""
     try:
-        interaction_data = {
-            "last_message": message,
-            "last_response": response.content,
-            "interaction_mood": mood_analysis.get("current_mood", "neutral"),
-            "successful_intent": True,
-            "timestamp": datetime.now().isoformat()
-        }
+        # Update behavior patterns based on interaction
+        await conversation_memory.update_behavior_patterns(user_id, {
+            "interaction_time": datetime.now().hour,
+            "message_length": len(message),
+            "response_type": response.mood,
+            "user_mood": mood_analysis.get("mood", "neutral")
+        })
         
-        memory_update = {
-            "current_mood": mood_analysis.get("current_mood", "neutral"),
-            "contextual_memory": json.dumps(interaction_data),
-            "interaction_count": 1  # This will be incremented in the database
-        }
-        
-        await db_manager.update_lumi_memory(user_id, memory_update)
-        
+        logger.info(f"🧠 Interaction memory updated for user {user_id}")
     except Exception as e:
-        logger.error(f"Error updating interaction memory: {e}")
-
-async def _create_basic_user_context(user_id: str) -> Dict[str, Any]:
-    """Cria contexto básico para usuário novo"""
-    return {
-        "user_info": {
-            "id": user_id,
-            "name": f"Usuário {user_id}",
-            "email": None,
-            "created_at": datetime.now()
-        },
-        "tasks_stats": {
-            "total_tasks": 0,
-            "completed_tasks": 0,
-            "pending_tasks": 0,
-            "in_progress_tasks": 0,
-            "overdue_tasks": 0,
-            "avg_pomodoros_per_task": 0
-        },
-        "recent_activity": [],
-        "productivity_patterns": {},
-        "current_streak": 0,
-        "lumi_memory": None,
-        "today_pomodoros": []
-    }
-
-def _create_simple_context_analysis(message: str):
-    """Cria análise de contexto simples como fallback"""
-    class SimpleContext:
-        def __init__(self, msg):
-            self.intent = "general_conversation"
-            self.entities = []
-            self.suggested_actions = []
-            self.message = msg
-    return SimpleContext(message)
-
-def _create_fallback_response(message: str, mood_analysis: Dict[str, Any]):
-    """Cria resposta de fallback quando outros sistemas falham"""
-    class FallbackResponse:
-        def __init__(self):
-            self.content = "Entendi! Como posso ajudar você a ser mais produtivo hoje?"
-            self.mood = mood_analysis.get("mood", "focused")
-            self.personality_tone = "friendly"
-            self.actions = []
-            self.insights = []
-            self.suggestions = ["Ver tarefas pendentes", "Iniciar um pomodoro", "Organizar agenda"]
-            self.emotional_context = {"fallback": True, "confidence": 0.3}
-    
-    return FallbackResponse()
-
-def _ensure_complete_response(response, mood_analysis: Dict[str, Any], processing_time: float) -> Dict[str, Any]:
-    """Garante que a resposta tenha todos os campos necessários"""
-    
-    # Se response é um objeto da AI Engine
-    if hasattr(response, 'content'):
-        return {
-            "response": response.content,
-            "mood": getattr(response, 'mood', mood_analysis.get("mood", "focused")),
-            "personality_tone": getattr(response, 'personality_tone', "friendly"),
-            "actions": getattr(response, 'actions', []),
-            "insights": getattr(response, 'insights', []),
-            "suggestions": getattr(response, 'suggestions', []),
-            "emotional_context": getattr(response, 'emotional_context', {}),
-            "processing_time": processing_time
-        }
-    
-    # Se response é um dicionário
-    elif isinstance(response, dict):
-        return {
-            "response": response.get("content", response.get("response", "Como posso ajudar?")),
-            "mood": response.get("mood", mood_analysis.get("mood", "focused")),
-            "personality_tone": response.get("personality_tone", "friendly"),
-            "actions": response.get("actions", []),
-            "insights": response.get("insights", []),
-            "suggestions": response.get("suggestions", []),
-            "emotional_context": response.get("emotional_context", {}),
-            "processing_time": processing_time
-        }
-    
-    # Se response é uma string simples
-    elif isinstance(response, str):
-        return {
-            "response": response,
-            "mood": mood_analysis.get("mood", "focused"),
-            "personality_tone": "friendly",
-            "actions": [],
-            "insights": [],
-            "suggestions": [],
-            "emotional_context": {},
-            "processing_time": processing_time
-        }
-    
-    # Fallback final
-    else:
-        return {
-            "response": "Como posso ajudar você hoje?",
-            "mood": "focused",
-            "personality_tone": "friendly",
-            "actions": [],
-            "insights": [],
-            "suggestions": ["Ver tarefas", "Iniciar pomodoro", "Verificar progresso"],
-            "emotional_context": {"fallback": True},
-            "processing_time": processing_time
-        }
-
-@router.get("/chat/health")
-async def chat_health():
-    """Health check for chat service"""
-    return {
-        "status": "healthy",
-        "services": {
-            "ai_engine": "operational",
-            "context_analyzer": "operational",
-            "task_intelligence": "operational",
-            "mood_detector": "operational"
-        },
-        "timestamp": datetime.now().isoformat()
-    }
+        logger.error(f"❌ Error updating interaction memory: {e}")
 
 async def _handle_intelligent_task_creation(user_id: str, task_intent, user_context: Dict[str, Any]):
     """Cria tarefa automaticamente baseada na detecção inteligente"""
     try:
+        # Preparar horário se fornecido
+        due_date_formatted = None
+        if task_intent.due_date and task_intent.time:
+            due_date_formatted = f"{task_intent.due_date} {task_intent.time}:00"
+        elif task_intent.due_date:
+            due_date_formatted = task_intent.due_date
+        
         # Criar tarefa no banco de dados
         task_data = {
             "title": task_intent.title,
             "description": task_intent.description or f"Tarefa criada automaticamente: {task_intent.title}",
             "priority": task_intent.priority,
             "estimated_pomodoros": task_intent.estimated_pomodoros,
-            "due_date": task_intent.due_date,
+            "due_date": due_date_formatted,
+            "time": task_intent.time,
             "status": "pending"
         }
         
-        # Tentar criar no banco (mesmo que falhe, vamos responder positivamente)
+        # Tentar criar no banco
         task_id = None
         try:
             task_id = await db_manager.create_task(user_id, task_data)
@@ -692,16 +582,26 @@ async def _handle_pending_tasks_query(user_id: str, user_context: Dict[str, Any]
     """Responde consultas sobre tarefas pendentes"""
     try:
         # Buscar tarefas pendentes do usuário
-        pending_tasks = []
-        try:
-            # Simular busca de tarefas (mesmo que DB falhe, dar resposta útil)
-            tasks_stats = user_context.get("tasks_stats", {})
-            pending_count = tasks_stats.get("pending_tasks", 0)
-            overdue_count = tasks_stats.get("overdue_tasks", 0)
-        except Exception as e:
-            logger.error(f"❌ Erro ao buscar tarefas: {e}")
-            pending_count = 0
-            overdue_count = 0
+        async with db_manager.get_connection() as conn:            pending_tasks = await conn.fetch("""
+                SELECT id, title, description, priority, "dueDate", 
+                       "estimatedPomodoros", "createdAt"
+                FROM task
+                WHERE "userId" = $1 AND status = 'pending'
+                ORDER BY 
+                    CASE priority 
+                        WHEN 'high' THEN 1 
+                        WHEN 'medium' THEN 2 
+                        ELSE 3 
+                    END,
+                    "dueDate" ASC NULLS LAST,
+                    "createdAt" ASC
+                LIMIT 10
+            """, user_id)
+        
+        # Buscar estatísticas
+        tasks_stats = user_context.get("tasks_stats", {})
+        pending_count = tasks_stats.get("pending_tasks", 0)
+        overdue_count = tasks_stats.get("overdue_tasks", 0)
         
         # Gerar resposta baseada no estado
         if pending_count == 0 and overdue_count == 0:
@@ -712,58 +612,104 @@ async def _handle_pending_tasks_query(user_id: str, user_context: Dict[str, Any]
                 "Revisar seus objetivos da semana",
                 "Fazer uma pausa merecida"
             ]
-        elif overdue_count > 0:
+        else:
             response_text = f"📋 Você tem {pending_count} tarefas pendentes"
             if overdue_count > 0:
                 response_text += f", sendo {overdue_count} em atraso"
-            response_text += ".\n\nVamos organizar isso juntos? Posso te ajudar a priorizar! 💪"
+            response_text += ".\n\n"
+            
+            # Listar as principais tarefas
+            if pending_tasks:
+                response_text += "**Suas principais tarefas:**\n"
+                for i, task in enumerate(pending_tasks[:5], 1):
+                    priority_emoji = "🔥" if task['priority'] == 'high' else "⭐" if task['priority'] == 'medium' else "📝"
+                    response_text += f"{i}. {priority_emoji} {task['title']}\n"
+                    
+                    if task['due_date']:
+                        response_text += f"   📅 Prazo: {task['due_date'].strftime('%d/%m às %H:%M')}\n"
+                    
+                    if task['estimated_pomodoros']:
+                        response_text += f"   ⏱️ {task['estimated_pomodoros']} pomodoros\n"
+                    response_text += "\n"
+            
+            response_text += "Vamos organizar isso juntos? Posso te ajudar a priorizar! 💪"
             mood = "focused"
             suggestions = [
-                "Mostrar tarefas em atraso primeiro",
-                "Reorganizar por prioridade",
-                "Começar com a mais simples"
-            ]
-        else:
-            response_text = f"📝 Você tem {pending_count} tarefas pendentes para trabalhar.\n\nEstá tudo organizado! Quer começar por alguma específica? 🎯"
-            mood = "motivated"
-            suggestions = [
-                "Ver lista completa de tarefas",
-                "Começar pela mais importante",
-                "Iniciar um pomodoro agora"
+                "Começar pela tarefa mais importante",
+                "Quebrar tarefas grandes em menores",
+                "Definir horários específicos para cada tarefa"
             ]
         
         return type('Response', (), {
             'content': response_text,
             'mood': mood,
-            'personality_tone': 'supportive',
+            'personality_tone': 'helpful',
             'actions': [{
-                "type": "tasks_overview_provided",
+                "type": "tasks_listed",
                 "data": {
-                    "pending_tasks": pending_count,
-                    "overdue_tasks": overdue_count,
-                    "total_tasks": pending_count + overdue_count
+                    "pending_count": pending_count,
+                    "overdue_count": overdue_count,
+                    "tasks": [dict(task) for task in pending_tasks[:5]]
                 }
             }],
             'insights': [
-                f"Você tem {pending_count} tarefas para focar" if pending_count > 0 
-                else "Ótimo momento para planejar novas atividades"
+                f"Total de {pending_count} tarefas pendentes",
+                f"{overdue_count} tarefas em atraso" if overdue_count > 0 else "Nenhuma tarefa em atraso"
             ],
             'suggestions': suggestions,
             'emotional_context': {
-                "tasks_query": True,
-                "organized_status": overdue_count == 0,
-                "motivation_needed": overdue_count > 0
+                "agenda_consultation": True,
+                "has_pending_tasks": pending_count > 0,
+                "has_overdue_tasks": overdue_count > 0
             }
         })()
         
     except Exception as e:
-        logger.error(f"❌ Erro ao consultar tarefas pendentes: {e}")
+        logger.error(f"❌ Erro ao buscar tarefas pendentes: {e}")
         return type('Response', (), {
-            'content': "Vou te ajudar a organizar suas tarefas! Ainda estou coletando os dados, mas já podemos começar a planejar. 😊",
-            'mood': 'supportive',
+            'content': "Ops! Tive um problema para acessar suas tarefas. Tente novamente em alguns instantes. 😅",
+            'mood': 'apologetic',
             'personality_tone': 'helpful',
             'actions': [],
-            'insights': ["Dados sendo carregados"],
-            'suggestions': ["Me conte o que você precisa fazer hoje"],
-            'emotional_context': {"loading": True}
+            'insights': ["Erro técnico ao acessar tarefas"],
+            'suggestions': ["Tente perguntar novamente", "Verifique sua conexão"],
+            'emotional_context': {"technical_error": True}
         })()
+
+def _create_simple_context_analysis(message: str):
+    """Create simple fallback context analysis"""
+    return type('ContextAnalysis', (), {
+        'intent': 'general_conversation',
+        'entities': {},
+        'suggested_actions': [],
+        'confidence': 0.5,
+        'topics': ['general']
+    })()
+
+def _ensure_complete_response(response, mood_analysis: Dict[str, Any], processing_time: float) -> Dict[str, Any]:
+    """Ensure response has all required fields"""
+    return {
+        "response": getattr(response, 'content', 'Olá! Como posso te ajudar hoje?'),
+        "mood": getattr(response, 'mood', mood_analysis.get('mood', 'neutral')),
+        "personality_tone": getattr(response, 'personality_tone', 'friendly'),
+        "actions": getattr(response, 'actions', []),
+        "insights": getattr(response, 'insights', []),
+        "suggestions": getattr(response, 'suggestions', []),
+        "emotional_context": getattr(response, 'emotional_context', {}),
+        "processing_time": processing_time
+    }
+
+@router.get("/chat/health")
+async def chat_health():
+    """Health check for chat service"""
+    return {
+        "status": "healthy",
+        "service": "chat_handler",
+        "timestamp": datetime.now().isoformat(),
+        "features": {
+            "intelligent_task_creation": True,
+            "conversation_memory": True,
+            "adaptive_personality": True,
+            "context_awareness": True
+        }
+    }
