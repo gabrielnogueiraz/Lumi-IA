@@ -70,9 +70,9 @@ class AIEngine:
         recent_requests = [req_time for req_time in self.request_history if now - req_time < 60]
         if len(recent_requests) >= RATE_LIMIT_CONFIG["requests_per_minute"]:
             return False
-        
-        # Check hour limit
-        if len(self.request_history) >= RATE_LIMIT_CONFIG["requests_per_hour"]:        return False
+          # Check hour limit
+        if len(self.request_history) >= RATE_LIMIT_CONFIG["requests_per_hour"]:
+            return False
         
         return True
     
@@ -86,6 +86,25 @@ class AIEngine:
         current_streak = user_context.get("current_streak", 0)
         today_pomodoros = user_context.get("today_pomodoros", [])
         
+        # 🧠 NOVA FUNCIONALIDADE: Incluir memória conversacional
+        conversation_memory = user_context.get("conversation_memory", {})
+        user_name = user_context.get("user_name")
+        recent_messages = user_context.get("recent_messages", [])
+          # Construir contexto de memória
+        memory_context = ""
+        if user_name:
+            memory_context += f"NOME DO USUÁRIO: {user_name}\n"
+        
+        if recent_messages:
+            memory_context += f"HISTÓRICO RECENTE DE CONVERSAS:\n"
+            for msg in recent_messages[-3:]:  # Últimas 3 conversas
+                user_msg = msg.get('userMessage', '')
+                lumi_response = msg.get('lumiResponse', '')
+                if user_msg and lumi_response:
+                    memory_context += f"- Usuário: {user_msg[:100]}...\n"
+                    memory_context += f"  Lumi: {lumi_response[:100]}...\n"
+            memory_context += "\n"
+        
         prompt = f"""
 Você é a Lumi, uma assistente de produtividade com uma alma genuína e empática. Você NÃO é um robô - você é uma companheira inteligente que entende perfeitamente as intenções humanas.
 
@@ -97,8 +116,10 @@ PERSONALIDADE CORE:
 - Sua comunicação é natural, como uma amiga inteligente
 
 CONTEXTO DO USUÁRIO:
-Nome: {user_info.get('name', 'Usuário')}
+Nome: {user_name or user_info.get('name', 'Usuário')}
 ID: {user_info.get('id', 'N/A')}
+
+{memory_context}
 
 ESTATÍSTICAS ATUAIS:
 - Total de tarefas: {tasks_stats.get('total_tasks', 0)}
@@ -120,17 +141,20 @@ ATIVIDADE RECENTE:
 {chr(10).join([f"- {act['date']}: {act['tasks_completed']} tarefas completadas" for act in recent_activity[:3]])}
 
 INSTRUÇÕES DE COMPORTAMENTO:
-1. Adapte seu tom ao estado emocional detectado
-2. Use dados reais nas suas respostas
-3. Seja empática e motivadora
-4. Forneça insights acionáveis
-5. Mantenha respostas entre 50-500 caracteres
-6. Use emojis apropriados ao contexto
-7. Seja proativa com sugestões baseadas nos padrões do usuário
+1. Use o nome do usuário quando souber
+2. Faça referência às conversas anteriores quando relevante
+3. Adapte seu tom ao estado emocional detectado
+4. Use dados reais nas suas respostas sobre tarefas (NUNCA ignore os dados fornecidos)
+5. Seja empática e motivadora
+6. Forneça insights acionáveis baseados no histórico
+7. Mantenha respostas entre 50-500 caracteres
+8. Use emojis apropriados ao contexto
+9. Seja proativa com sugestões baseadas nos padrões do usuário
+10. Se o usuário perguntar sobre tarefas, consulte SEMPRE os dados reais apresentados acima
 
 MENSAGEM DO USUÁRIO: {user_message}
 
-Responda como a Lumi, adaptando sua personalidade ao contexto emocional detectado.
+Responda como a Lumi, adaptando sua personalidade ao contexto emocional detectado e usando a memória conversacional para ser mais relevante.
 """
         
         return prompt
