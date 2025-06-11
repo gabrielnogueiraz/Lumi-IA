@@ -70,50 +70,71 @@ class IntelligentTaskExtractor:
     def _init_task_patterns(self) -> List[Dict[str, Any]]:
         """Padrões para extrair diferentes tipos de tarefa"""
         return [
+            # Padrões de configuração/setup - MOVIDO PARA CIMA para maior prioridade
             {
-                'pattern': r'(?:preciso|tenho que|vou|quero) estudar (\w+)',
+                'pattern': r'(?:preciso|tenho que|vou|quero) (?:configurar|instalar|implementar|setup) (.+?)(?:\s+(?:hoje|amanhã|às|até|\d)|$)',
+                'task_type': 'configuration',
+                'title_template': 'Configurar {system}',
+                'default_duration': 3
+            },
+            {
+                'pattern': r'(?:configurar|instalar|implementar|setup) (?:o |a )?(.+?)(?:\s+(?:hoje|amanhã|às|até|\d)|$)',
+                'task_type': 'configuration',
+                'title_template': 'Configurar {system}',
+                'default_duration': 3
+            },
+            
+            # Padrões de estudo
+            {
+                'pattern': r'(?:preciso|tenho que|vou|quero) estudar (.+?)(?:\s+(?:hoje|amanhã|às|até|\d)|$)',
                 'task_type': 'study',
                 'title_template': 'Estudar {subject}',
                 'default_duration': 2
             },
             {
-                'pattern': r'estudar (\w+)',
+                'pattern': r'estudar (.+?)(?:\s+(?:hoje|amanhã|às|até|\d)|$)',
                 'task_type': 'study',
                 'title_template': 'Estudar {subject}',
                 'default_duration': 2
             },
+            
+            # Padrões de finalização
             {
-                'pattern': r'reunião (com|sobre) (.+)',
+                'pattern': r'(?:preciso|tenho que|vou|quero) (?:terminar|concluir|finalizar) (.+?)(?:\s+(?:hoje|amanhã|às|até|\d)|$)',
+                'task_type': 'completion',
+                'title_template': 'Terminar {task}',
+                'default_duration': 2
+            },
+            {
+                'pattern': r'(?:terminar|concluir|finalizar) (?:a |o |de )?(.+?)(?:\s+(?:hoje|amanhã|às|até|\d)|$)',
+                'task_type': 'completion',
+                'title_template': 'Terminar {task}',
+                'default_duration': 2
+            },
+            
+            # Padrões de reunião
+            {
+                'pattern': r'reunião (com|sobre) (.+?)(?:\s+(?:hoje|amanhã|às|até|\d)|$)',
                 'task_type': 'meeting',
                 'title_template': 'Reunião {details}',
                 'default_duration': 1
             },
+            
+            # Padrões gerais - mais abrangentes
             {
-                'pattern': r'(?:preciso|tenho que|vou|quero) fazer (.+)',
+                'pattern': r'(?:preciso|tenho que|vou|quero) (.+?)(?:\s+(?:hoje|amanhã|às|até|\d)|$)',
                 'task_type': 'general',
                 'title_template': '{activity}',
                 'default_duration': 1
             },
             {
-                'pattern': r'fazer (.+)',
+                'pattern': r'(?:fazer|realizar|executar) (?:a |o |de )?(.+?)(?:\s+(?:hoje|amanhã|às|até|\d)|$)',
                 'task_type': 'general',
-                'title_template': '{activity}',
-                'default_duration': 1
-            },
-            {
-                'pattern': r'trabalhar (em|no|na) (.+)',
-                'task_type': 'work',
-                'title_template': 'Trabalhar em {project}',
-                'default_duration': 2
-            },
-            {
-                'pattern': r'lembrar de (.+)',
-                'task_type': 'reminder',
-                'title_template': 'Lembrar: {reminder}',
+                'title_template': 'Fazer {activity}',
                 'default_duration': 1
             }
         ]
-    
+
     def extract_task_from_message(self, message: str) -> Optional[TaskIntent]:
         """Extrai informações de tarefa de uma mensagem natural"""
         message_lower = message.lower()
@@ -122,7 +143,10 @@ class IntelligentTaskExtractor:
         task_keywords = [
             'adicione na minha agenda', 'agendar', 'marcar para', 'programar',
             'estudar', 'fazer', 'trabalhar em', 'reunião', 'compromisso',
-            'lembrar de', 'não esquecer de', 'preciso', 'tenho que'
+            'lembrar de', 'não esquecer de', 'preciso', 'tenho que',
+            'configurar', 'instalar', 'implementar', 'setup', 'terminar',
+            'concluir', 'finalizar', 'completar', 'resolver', 'executar',
+            'realizar', 'desenvolver', 'criar', 'construir', 'montar'
         ]
         
         has_task_intent = any(keyword in message_lower for keyword in task_keywords)
@@ -153,7 +177,7 @@ class IntelligentTaskExtractor:
             }
         )
         
-        logger.info(f"✅ Tarefa extraída: {task_intent.title} para {task_intent.due_date} às {task_intent.time}")
+        logger.info(f"✅ Tarefa extraída: {task_intent.title}")
         return task_intent
     
     def _extract_time(self, message: str) -> Optional[Dict[str, str]]:
@@ -164,31 +188,11 @@ class IntelligentTaskExtractor:
         for pattern, time_type in self.time_patterns.items():
             match = re.search(pattern, message)
             if match:
-                if time_type == 'specific_time':
-                    hour, minute = match.groups()
-                    result['time'] = f"{hour}:{minute}"
-                elif time_type == 'at_specific_time':
-                    hour, minute = match.groups()
-                    result['time'] = f"{hour}:{minute}"
-                elif time_type == 'hour_format':
-                    hour = match.group(1)
-                    minute = match.group(2) or "00"
-                    result['time'] = f"{hour}:{minute}"
-                elif time_type == 'at_hour_format':
-                    hour = match.group(1)
-                    minute = match.group(2) or "00"
-                    result['time'] = f"{hour}:{minute}"
-                elif time_type == 'at_hour':
-                    hour = match.group(1)
-                    result['time'] = f"{hour}:00"
-                elif time_type == 'tomorrow':
+                if time_type == 'tomorrow':
                     tomorrow = datetime.now() + timedelta(days=1)
                     result['date'] = tomorrow.strftime('%Y-%m-%d')
                 elif time_type == 'today':
                     result['date'] = datetime.now().strftime('%Y-%m-%d')
-                elif time_type == 'day_after_tomorrow':
-                    day_after = datetime.now() + timedelta(days=2)
-                    result['date'] = day_after.strftime('%Y-%m-%d')
                 
                 result['type'] = time_type
                 break
@@ -209,7 +213,15 @@ class IntelligentTaskExtractor:
             if match:
                 groups = match.groups()
                 
-                if task_pattern['task_type'] == 'study':
+                if task_pattern['task_type'] == 'configuration':
+                    system = groups[0]
+                    return {
+                        'title': f"Configurar {system.title()}",
+                        'description': f"Configuração: {system}",
+                        'duration': task_pattern['default_duration'],
+                        'type': 'configuration'
+                    }
+                elif task_pattern['task_type'] == 'study':
                     subject = groups[0]
                     return {
                         'title': f"Estudar {subject.title()}",
@@ -217,13 +229,13 @@ class IntelligentTaskExtractor:
                         'duration': task_pattern['default_duration'],
                         'type': 'study'
                     }
-                elif task_pattern['task_type'] == 'general':
-                    activity = groups[0]
+                elif task_pattern['task_type'] == 'completion':
+                    task = groups[0]
                     return {
-                        'title': activity.title(),
-                        'description': f"Tarefa: {activity}",
+                        'title': f"Terminar {task.title()}",
+                        'description': f"Finalizar: {task}",
                         'duration': task_pattern['default_duration'],
-                        'type': 'general'
+                        'type': 'completion'
                     }
                 elif task_pattern['task_type'] == 'meeting':
                     details = ' '.join(groups)
@@ -233,35 +245,14 @@ class IntelligentTaskExtractor:
                         'duration': task_pattern['default_duration'],
                         'type': 'meeting'
                     }
-                elif task_pattern['task_type'] == 'work':
-                    project = groups[1]
+                elif task_pattern['task_type'] == 'general':
+                    activity = groups[0]
                     return {
-                        'title': f"Trabalhar em {project.title()}",
-                        'description': f"Sessão de trabalho: {project}",
+                        'title': activity.title(),
+                        'description': f"Tarefa: {activity}",
                         'duration': task_pattern['default_duration'],
-                        'type': 'work'
+                        'type': 'general'
                     }
-                elif task_pattern['task_type'] == 'reminder':
-                    reminder = groups[0]
-                    return {
-                        'title': f"Lembrar: {reminder.title()}",
-                        'description': f"Lembrete: {reminder}",
-                        'duration': task_pattern['default_duration'],
-                        'type': 'reminder'
-                    }
-        
-        # Fallback: extrair título genérico
-        if 'estudar' in message:
-            # Tentar extrair o que vem depois de "estudar"
-            match = re.search(r'estudar (.+?)(?:\s+(?:amanhã|hoje|às|\d)|\s*$)', message)
-            if match:
-                subject = match.group(1).strip()
-                return {
-                    'title': f"Estudar {subject.title()}",
-                    'description': f"Sessão de estudos: {subject}",
-                    'duration': 2,
-                    'type': 'study'
-                }
         
         return None
 
