@@ -26,6 +26,7 @@ from datetime import datetime
 from api.chat_handler import router as chat_router
 from api.analytics_handler import router as analytics_router
 from api.health_handler import router as health_router
+# from api.debug_handler import debug_router
 
 # Import core services
 from core.database_manager import db_manager
@@ -116,16 +117,36 @@ app = FastAPI(
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify allowed origins
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000", 
+        "http://localhost:5000",
+        "http://127.0.0.1:5000",
+        "http://localhost:*",
+        "*"  # Allow all origins temporarily for debugging
+    ],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=[
+        "Accept",
+        "Accept-Language", 
+        "Content-Language",
+        "Content-Type",
+        "Authorization",
+        "X-Requested-With",
+        "Origin",
+        "Access-Control-Request-Method",
+        "Access-Control-Request-Headers"
+    ],
+    expose_headers=["*"],
+    max_age=86400,  # 24 hours
 )
 
 # Include routers
 app.include_router(chat_router, prefix="/api", tags=["💬 Chat"])
 app.include_router(analytics_router, prefix="/api", tags=["📊 Analytics"])
 app.include_router(health_router, tags=["🏥 Health"])
+# app.include_router(debug_router, prefix="/api", tags=["🐛 Debug"])
 
 @app.get("/", tags=["🏠 Home"])
 async def root():
@@ -176,10 +197,9 @@ async def api_info():
             "host": "localhost",
             "port": 5432,
             "database": "pomodorotasks"
-        },
-        "ai_engine": {
+        },        "ai_engine": {
             "provider": "Google Gemini",
-            "model": "gemma-2-2b-it",
+            "model": os.getenv("GEMINI_MODEL", "gemini-1.5-flash"),
             "features": [
                 "Processamento de linguagem natural",
                 "Análise de contexto",
@@ -212,45 +232,52 @@ async def http_exception_handler(request, exc):
     """
     Handler customizado para exceções HTTP
     """
+    from fastapi.responses import JSONResponse
     logger.error(f"HTTP Exception: {exc.status_code} - {exc.detail}")
-    return {
-        "error": {
-            "status_code": exc.status_code,
-            "message": exc.detail,
-            "timestamp": datetime.now().isoformat(),
-            "suggestion": "Verifique a documentação em /docs para uso correto da API"
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": {
+                "status_code": exc.status_code,
+                "message": exc.detail,
+                "timestamp": datetime.now().isoformat(),
+                "suggestion": "Verifique a documentação em /docs para uso correto da API"
+            }
         }
-    }
+    )
 
 @app.exception_handler(Exception)
 async def general_exception_handler(request, exc):
     """
     Handler para exceções gerais
     """
+    from fastapi.responses import JSONResponse
     logger.error(f"Unhandled exception: {str(exc)}")
-    return {
-        "error": {
-            "status_code": 500,
-            "message": "Erro interno do servidor",
-            "timestamp": datetime.now().isoformat(),
-            "suggestion": "A Lumi encontrou um problema inesperado. Tente novamente em alguns instantes."
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": {
+                "status_code": 500,
+                "message": "Erro interno do servidor",
+                "timestamp": datetime.now().isoformat(),
+                "suggestion": "A Lumi encontrou um problema inesperado. Tente novamente em alguns instantes."
+            }
         }
-    }
+    )
 
 if __name__ == "__main__":
     """
     Executa a aplicação Lumi AI
     """
     print("""
-    ███╗   ███╗██╗   ██╗███╗   ███╗██╗    ██╗██╗
-    ██╔══██╗██║   ██║██╔══██╗██║   ██║██║
-    ███████║██║   ██║███████║██║██╗██║██║
-    ██╔═══██║██║   ██║██╔══██║██║╚═╝██║██║
-    ██║     ██║╚██████╔╝██║  ██║██║██║ ██║██║
-    ╚═╝     ╚═╝ ╚═════╝ ╚═╝  ╚═╝╚═╝╚═╝ ╚═╝╚═╝
-    
-    🤖 Assistente Inteligente de Produtividade
-    Versão 2.0.0 - Personalidade Adaptativa
+    ==========================================
+    |         LUMI AI ASSISTANT            |
+    |     Assistente Inteligente de        |
+    |           Produtividade              |
+    |                                      |
+    |       Versao 2.0.0 - Enhanced       |
+    |      Personalidade Adaptativa        |
+    ==========================================
     """)
     
     # Configuration
@@ -259,9 +286,9 @@ if __name__ == "__main__":
     workers = int(os.getenv("WORKERS", 1))
     log_level = os.getenv("LOG_LEVEL", "info")
     
-    print(f"🚀 Iniciando servidor em http://{host}:{port}")
-    print(f"📚 Documentação disponível em http://{host}:{port}/docs")
-    print(f"🏥 Health check em http://{host}:{port}/health")
+    print(f"[STARTUP] Iniciando servidor em http://{host}:{port}")
+    print(f"[DOCS] Documentacao disponivel em http://{host}:{port}/docs")
+    print(f"[HEALTH] Health check em http://{host}:{port}/health")
     
     # Run the application
     uvicorn.run(
