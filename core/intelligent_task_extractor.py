@@ -5,7 +5,7 @@ Detecta automaticamente quando o usuário quer criar uma tarefa e extrai todos o
 import re
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any, Tuple
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import structlog
 
 logger = structlog.get_logger(__name__)
@@ -20,7 +20,7 @@ class TaskIntent:
     priority: str = "medium"
     estimated_pomodoros: int = 1
     confidence: float = 0.0
-    extracted_entities: Dict[str, Any] = None
+    extracted_entities: Dict[str, Any] = field(default_factory=dict)
 
 class IntelligentTaskExtractor:
     def __init__(self):
@@ -33,7 +33,9 @@ class IntelligentTaskExtractor:
         return {
             # Horários específicos
             r'(\d{1,2}):(\d{2})': 'specific_time',
+            r'às (\d{1,2}):(\d{2})': 'at_specific_time',
             r'(\d{1,2})h(\d{2})?': 'hour_format',
+            r'às (\d{1,2})h(\d{2})?': 'at_hour_format',
             r'às (\d{1,2})': 'at_hour',
             
             # Dias relativos
@@ -69,6 +71,12 @@ class IntelligentTaskExtractor:
         """Padrões para extrair diferentes tipos de tarefa"""
         return [
             {
+                'pattern': r'(?:preciso|tenho que|vou|quero) estudar (\w+)',
+                'task_type': 'study',
+                'title_template': 'Estudar {subject}',
+                'default_duration': 2
+            },
+            {
                 'pattern': r'estudar (\w+)',
                 'task_type': 'study',
                 'title_template': 'Estudar {subject}',
@@ -78,6 +86,12 @@ class IntelligentTaskExtractor:
                 'pattern': r'reunião (com|sobre) (.+)',
                 'task_type': 'meeting',
                 'title_template': 'Reunião {details}',
+                'default_duration': 1
+            },
+            {
+                'pattern': r'(?:preciso|tenho que|vou|quero) fazer (.+)',
+                'task_type': 'general',
+                'title_template': '{activity}',
                 'default_duration': 1
             },
             {
@@ -146,14 +160,21 @@ class IntelligentTaskExtractor:
         """Extrai informações de tempo da mensagem"""
         result = {}
         
-        # Procurar horários específicos
+        # Procurar horários específicos primeiro
         for pattern, time_type in self.time_patterns.items():
             match = re.search(pattern, message)
             if match:
                 if time_type == 'specific_time':
                     hour, minute = match.groups()
                     result['time'] = f"{hour}:{minute}"
+                elif time_type == 'at_specific_time':
+                    hour, minute = match.groups()
+                    result['time'] = f"{hour}:{minute}"
                 elif time_type == 'hour_format':
+                    hour = match.group(1)
+                    minute = match.group(2) or "00"
+                    result['time'] = f"{hour}:{minute}"
+                elif time_type == 'at_hour_format':
                     hour = match.group(1)
                     minute = match.group(2) or "00"
                     result['time'] = f"{hour}:{minute}"
@@ -165,7 +186,9 @@ class IntelligentTaskExtractor:
                     result['date'] = tomorrow.strftime('%Y-%m-%d')
                 elif time_type == 'today':
                     result['date'] = datetime.now().strftime('%Y-%m-%d')
-                # ... outros tipos de tempo
+                elif time_type == 'day_after_tomorrow':
+                    day_after = datetime.now() + timedelta(days=2)
+                    result['date'] = day_after.strftime('%Y-%m-%d')
                 
                 result['type'] = time_type
                 break
@@ -202,7 +225,30 @@ class IntelligentTaskExtractor:
                         'duration': task_pattern['default_duration'],
                         'type': 'general'
                     }
-                # ... outros tipos
+                elif task_pattern['task_type'] == 'meeting':
+                    details = ' '.join(groups)
+                    return {
+                        'title': f"Reunião {details}",
+                        'description': f"Reunião: {details}",
+                        'duration': task_pattern['default_duration'],
+                        'type': 'meeting'
+                    }
+                elif task_pattern['task_type'] == 'work':
+                    project = groups[1]
+                    return {
+                        'title': f"Trabalhar em {project.title()}",
+                        'description': f"Sessão de trabalho: {project}",
+                        'duration': task_pattern['default_duration'],
+                        'type': 'work'
+                    }
+                elif task_pattern['task_type'] == 'reminder':
+                    reminder = groups[0]
+                    return {
+                        'title': f"Lembrar: {reminder.title()}",
+                        'description': f"Lembrete: {reminder}",
+                        'duration': task_pattern['default_duration'],
+                        'type': 'reminder'
+                    }
         
         # Fallback: extrair título genérico
         if 'estudar' in message:
