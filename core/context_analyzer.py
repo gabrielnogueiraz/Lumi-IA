@@ -25,24 +25,32 @@ class ContextAnalyzer:
         """Initialize intent detection patterns"""
         return {
             "create_task": [
+                # Padrões diretos de criação
                 "criar tarefa", "nova tarefa", "adicionar tarefa", "preciso fazer",
-                "tenho que", "vou fazer", "criar atividade", "nova atividade"
+                "tenho que", "vou fazer", "criar atividade", "nova atividade",
+                # Padrões de agenda/planejamento
+                "adicione na minha agenda", "agendar", "marcar para", "programar",
+                "estudar", "fazer", "trabalhar em", "reunião", "compromisso",
+                "lembrar de", "não esquecer de", "amanhã", "hoje", "semana",
+                # Padrões temporais específicos
+                "às", "na", "no", "durante", "depois", "antes", "até"
             ],
             "start_pomodoro": [
                 "começar pomodoro", "iniciar sessão", "vamos trabalhar", "começar agora",
-                "iniciar foco", "hora de trabalhar", "começar timer"
+                "iniciar foco", "hora de trabalhar", "começar timer", "focar"
             ],
             "check_progress": [
                 "como estou", "meu progresso", "estatísticas", "como vou",
-                "meus dados", "resumo", "relatório", "análise"
+                "meus dados", "resumo", "relatório", "análise", "tarefas pendentes",
+                "tenho alguma tarefa", "o que preciso fazer", "pendências"
             ],
             "get_suggestions": [
                 "o que fazer", "sugestão", "recomendação", "ajuda", "próximo passo",
-                "que tarefa", "me ajude", "orientação"
+                "que tarefa", "me ajude", "orientação", "procrastinando", "procrastinação"
             ],
             "motivational_chat": [
                 "não consigo", "difícil", "cansado", "desmotivado", "desanimado",
-                "como vai", "oi", "olá", "bom dia", "boa tarde"
+                "como vai", "oi", "olá", "bom dia", "boa tarde", "procrastinando"
             ],
             "celebrate_achievement": [
                 "consegui", "terminei", "completei", "finalizei", "sucesso",
