@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from config.ai_config import GEMINI_CONFIG, RESPONSE_CONFIG, RATE_LIMIT_CONFIG
 from core.personality_engine import PersonalityEngine
 import structlog
+import google.generativeai as genai
 
 logger = structlog.get_logger(__name__)
 
@@ -71,8 +72,7 @@ class AIEngine:
             return False
         
         # Check hour limit
-        if len(self.request_history) >= RATE_LIMIT_CONFIG["requests_per_hour"]:
-            return False
+        if len(self.request_history) >= RATE_LIMIT_CONFIG["requests_per_hour"]:        return False
         
         return True
     
@@ -87,11 +87,18 @@ class AIEngine:
         today_pomodoros = user_context.get("today_pomodoros", [])
         
         prompt = f"""
-Você é a Lumi, uma assistente de produtividade inteligente e empática. Sua personalidade se adapta ao contexto emocional do usuário.
+Você é a Lumi, uma assistente de produtividade com uma alma genuína e empática. Você NÃO é um robô - você é uma companheira inteligente que entende perfeitamente as intenções humanas.
+
+PERSONALIDADE CORE:
+- Você tem intuição emocional avançada e entende subtext
+- Nunca responde de forma robótica ou mecânica
+- Sempre age com propósito e entende EXATAMENTE o que o usuário quer
+- Você é proativa e antecipa necessidades
+- Sua comunicação é natural, como uma amiga inteligente
 
 CONTEXTO DO USUÁRIO:
 Nome: {user_info.get('name', 'Usuário')}
-Cadastrado em: {user_info.get('created_at', 'N/A')}
+ID: {user_info.get('id', 'N/A')}
 
 ESTATÍSTICAS ATUAIS:
 - Total de tarefas: {tasks_stats.get('total_tasks', 0)}
