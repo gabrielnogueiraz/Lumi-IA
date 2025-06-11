@@ -94,20 +94,29 @@ async def chat_with_lumi(request: ChatRequest):
             raise HTTPException(status_code=400, detail="user_id deve ser um UUID válido")
         
         logger.info(f"✅ User ID validation passed: {request.user_id}")
-        
-        # 🧠 CARREGAR MEMÓRIA DA CONVERSA
+          # 🧠 CARREGAR MEMÓRIA DA CONVERSA
         try:
             logger.info(f"🧠 Carregando memória da conversa para usuário {request.user_id}")
-            conversation_context = await conversation_memory.get_conversation_context(request.user_id)
-            user_name = conversation_context.get('user_name')
-            recent_messages = conversation_context.get('recent_messages', [])
+            conversation_context_raw = await conversation_memory.get_conversation_context(request.user_id)
+            user_name = await conversation_memory.get_user_name(request.user_id)
             
-            logger.info(f"💾 Memória carregada: {len(recent_messages)} mensagens recentes")
+            # Estruturar contexto da conversa
+            conversation_context = {
+                'recent_messages': conversation_context_raw,
+                'user_name': user_name,
+                'has_previous_conversations': len(conversation_context_raw) > 0
+            }
+            
+            logger.info(f"💾 Memória carregada: {len(conversation_context_raw)} mensagens recentes")
             if user_name:
                 logger.info(f"👤 Nome do usuário: {user_name}")
         except Exception as e:
             logger.error(f"❌ Erro ao carregar memória da conversa: {e}")
-            conversation_context = {'recent_messages': [], 'user_name': None}
+            conversation_context = {
+                'recent_messages': [], 
+                'user_name': None,
+                'has_previous_conversations': False
+            }
             user_name = None
         
         # Fetch comprehensive user context
@@ -212,13 +221,12 @@ async def chat_with_lumi(request: ChatRequest):
             elif hasattr(context_analysis, 'intent') and context_analysis.intent == "get_suggestions":
                 logger.info(f"💡 Handling suggestions intent")
                 response = await _handle_suggestions_intent(request.user_id, context_analysis, user_context)
-            else:
-                # 🧠 PERSONALIZAÇÃO: Usar memória para resposta mais contextual
+            else:                # 🧠 PERSONALIZAÇÃO: Usar memória para resposta mais contextual
                 enhanced_context = {**user_context}
                 enhanced_context.update({
                     'conversation_memory': conversation_context,
                     'user_name': user_name,
-                    'recent_messages': recent_messages
+                    'recent_messages': conversation_context.get('recent_messages', [])
                 })
                 
                 logger.info(f"🤖 Generating contextualized response with memory")
@@ -582,29 +590,37 @@ async def _handle_pending_tasks_query(user_id: str, user_context: Dict[str, Any]
     """Responde consultas sobre tarefas pendentes"""
     try:
         # Buscar tarefas pendentes do usuário
-        async with db_manager.get_connection() as conn:            pending_tasks = await conn.fetch("""
-                SELECT id, title, description, priority, "dueDate", 
-                       "estimatedPomodoros", "createdAt"
-                FROM task
-                WHERE "userId" = $1 AND status = 'pending'
-                ORDER BY 
-                    CASE priority 
-                        WHEN 'high' THEN 1 
-                        WHEN 'medium' THEN 2 
-                        ELSE 3 
-                    END,
-                    "dueDate" ASC NULLS LAST,
-                    "createdAt" ASC
-                LIMIT 10
-            """, user_id)
+        pending_tasks = await db_manager.execute_query("""
+            SELECT id, title, description, priority, "dueDate", 
+                   "estimatedPomodoros", "createdAt", status
+            FROM task
+            WHERE "userId" = $1 AND status = 'pending'
+            ORDER BY 
+                CASE priority 
+                    WHEN 'high' THEN 1 
+                    WHEN 'medium' THEN 2 
+                    ELSE 3 
+                END,
+                "dueDate" ASC NULLS LAST,
+                "createdAt" ASC
+            LIMIT 10
+        """, [user_id])
         
-        # Buscar estatísticas
-        tasks_stats = user_context.get("tasks_stats", {})
-        pending_count = tasks_stats.get("pending_tasks", 0)
-        overdue_count = tasks_stats.get("overdue_tasks", 0)
+        # Calcular estatísticas dos resultados diretos
+        pending_count = len(pending_tasks) if pending_tasks else 0
         
-        # Gerar resposta baseada no estado
-        if pending_count == 0 and overdue_count == 0:
+        # Verificar tarefas em atraso
+        overdue_count = 0
+        now = datetime.now()
+        if pending_tasks:
+            for task in pending_tasks:
+                if task.get('dueDate') and task['dueDate'] < now:
+                    overdue_count += 1
+        
+        logger.info(f"📊 Tarefas encontradas: {pending_count} pendentes, {overdue_count} em atraso")
+        
+        # Gerar resposta baseada no estado REAL das tarefas
+        if pending_count == 0:
             response_text = "🎉 Você está livre! Não tem nenhuma tarefa pendente no momento.\n\nQue tal aproveitar para planejar algo novo ou relaxar um pouco? 😊"
             mood = "celebrating"
             suggestions = [
@@ -625,11 +641,15 @@ async def _handle_pending_tasks_query(user_id: str, user_context: Dict[str, Any]
                     priority_emoji = "🔥" if task['priority'] == 'high' else "⭐" if task['priority'] == 'medium' else "📝"
                     response_text += f"{i}. {priority_emoji} {task['title']}\n"
                     
-                    if task['due_date']:
-                        response_text += f"   📅 Prazo: {task['due_date'].strftime('%d/%m às %H:%M')}\n"
+                    if task.get('dueDate'):
+                        due_date = task['dueDate']
+                        if isinstance(due_date, str):
+                            response_text += f"   📅 Prazo: {due_date}\n"
+                        else:
+                            response_text += f"   📅 Prazo: {due_date.strftime('%d/%m às %H:%M')}\n"
                     
-                    if task['estimated_pomodoros']:
-                        response_text += f"   ⏱️ {task['estimated_pomodoros']} pomodoros\n"
+                    if task.get('estimatedPomodoros'):
+                        response_text += f"   ⏱️ {task['estimatedPomodoros']} pomodoros\n"
                     response_text += "\n"
             
             response_text += "Vamos organizar isso juntos? Posso te ajudar a priorizar! 💪"
