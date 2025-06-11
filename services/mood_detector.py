@@ -66,14 +66,13 @@ class MoodDetectorService:
     async def analyze_mood_history(self, user_id: str, days: int = 30) -> Dict[str, Any]:
         """Analyze user's mood patterns over time"""
         try:
-            async with self.db_manager.get_connection() as conn:
-                # Get mood history from lumi_memory table
+            async with self.db_manager.get_connection() as conn:                # Get mood history from lumi_memory table
                 mood_history = await conn.fetch("""
-                    SELECT current_mood, updated_at, behavior_patterns
+                    SELECT "currentMood", "updatedAt", "behaviorPatterns"
                     FROM lumi_memory 
-                    WHERE user_id = $1 AND updated_at >= NOW() - INTERVAL '%s days'
-                    ORDER BY updated_at DESC
-                """, user_id, days)
+                    WHERE "userId" = $1 AND "updatedAt" >= NOW() - INTERVAL $2
+                    ORDER BY "updatedAt" DESC
+                """, user_id, f"{days} days")
                 
                 if not mood_history:
                     return {"error": "Insufficient mood history data"}
@@ -367,7 +366,7 @@ class MoodDetectorService:
     def _determine_primary_mood(self, mood_scores: Dict[str, float]) -> Tuple[str, float]:
         """Determine primary mood from scores"""
         if not mood_scores or all(score == 0 for score in mood_scores.values()):
-            return "neutral", 0.5
+            return "encouraging", 0.5
         
         # Find the mood with highest score
         primary_mood = max(mood_scores.items(), key=lambda x: x[1])
@@ -375,26 +374,25 @@ class MoodDetectorService:
         
         # Ensure minimum confidence threshold
         if confidence < 0.3:
-            return "neutral", confidence
+            return "encouraging", confidence
         
         return mood_name, min(confidence, 1.0)
     
     async def _analyze_mood_transition(self, user_id: str, current_mood: str) -> Optional[MoodTransition]:
         """Analyze mood transition from previous state"""
         try:
-            async with self.db_manager.get_connection() as conn:
-                # Get previous mood from memory
+            async with self.db_manager.get_connection() as conn:                # Get previous mood from memory
                 previous_mood_data = await conn.fetchrow("""
-                    SELECT current_mood, updated_at
+                    SELECT "currentMood", "updatedAt"
                     FROM lumi_memory
-                    WHERE user_id = $1
-                    ORDER BY updated_at DESC
+                    WHERE "userId" = $1
+                    ORDER BY "updatedAt" DESC
                     LIMIT 1
                 """, user_id)
                 
                 if previous_mood_data:
-                    previous_mood = previous_mood_data["current_mood"]
-                    previous_timestamp = previous_mood_data["updated_at"]
+                    previous_mood = previous_mood_data["currentMood"]
+                    previous_timestamp = previous_mood_data["updatedAt"]
                     
                     if previous_mood != current_mood:
                         # Analyze what caused the transition
@@ -522,7 +520,7 @@ class MoodDetectorService:
     def _get_default_mood_detection(self) -> Dict[str, Any]:
         """Get default mood detection result"""
         return {
-            "current_mood": "neutral",
+            "current_mood": "encouraging",
             "confidence": 0.5,
             "mood_scores": {},
             "indicators": [],
