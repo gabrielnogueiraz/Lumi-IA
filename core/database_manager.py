@@ -57,62 +57,59 @@ class DatabaseManager:
     async def fetch_user_context(self, user_id: str) -> Dict[str, Any]:
         """Fetch complete user context for AI processing"""
         async with self.get_connection() as conn:
-            try:
-                # User basic info
+            try:                # User basic info - usando tabela correta do Toivo
                 user_info = await conn.fetchrow("""
-                    SELECT id, name, email, created_at
-                    FROM users WHERE id = $1
+                    SELECT id, name, email, "createdAt" as created_at
+                    FROM "user" WHERE id = $1
                 """, user_id)
                 
                 if not user_info:
                     return {"error": "User not found"}
                 
-                # Tasks statistics
+                # Tasks statistics - usando tabela correta do Toivo
                 tasks_stats = await conn.fetchrow("""
                     SELECT 
                         COUNT(*) as total_tasks,
                         COUNT(*) FILTER (WHERE status = 'completed') as completed_tasks,
-                        COUNT(*) FILTER (WHERE status = 'pending') as pending_tasks,
-                        COUNT(*) FILTER (WHERE status = 'in_progress') as in_progress_tasks,
-                        COUNT(*) FILTER (WHERE due_date < NOW() AND status != 'completed') as overdue_tasks,
-                        AVG(completed_pomodoros) FILTER (WHERE status = 'completed') as avg_pomodoros_per_task
-                    FROM tasks WHERE user_id = $1
+                        COUNT(*) FILTER (WHERE status = 'PENDING') as pending_tasks,
+                        COUNT(*) FILTER (WHERE status = 'IN_PROGRESS') as in_progress_tasks,                        COUNT(*) FILTER (WHERE "dueDate" < NOW() AND status != 'completed') as overdue_tasks,
+                        AVG("completedPomodoros") FILTER (WHERE status = 'completed') as avg_pomodoros_per_task
+                    FROM task WHERE "userId" = $1
                 """, user_id)
-                
-                # Recent activity (last 7 days)
+                  # Recent activity (last 7 days) - usando tabela correta do Toivo
                 recent_activity = await conn.fetch("""
                     SELECT 
-                        DATE(created_at) as date,
+                        DATE("createdAt") as date,
                         COUNT(*) as tasks_created,
                         COUNT(*) FILTER (WHERE status = 'completed') as tasks_completed
-                    FROM tasks 
-                    WHERE user_id = $1 AND created_at >= NOW() - INTERVAL '7 days'
-                    GROUP BY DATE(created_at)
+                    FROM task 
+                    WHERE "userId" = $1 AND "createdAt" >= NOW() - INTERVAL '7 days'
+                    GROUP BY DATE("createdAt")
                     ORDER BY date DESC
                 """, user_id)
                 
-                # Productivity patterns
+                # Productivity patterns - usando tabela correta do Toivo
                 productivity_patterns = await conn.fetchrow("""
                     SELECT 
-                        EXTRACT(hour FROM started_at) as peak_hour,
+                        EXTRACT(hour FROM "startedAt") as peak_hour,
                         COUNT(*) as pomodoro_count,
                         AVG(duration) as avg_duration
-                    FROM pomodoros p
-                    JOIN tasks t ON p.task_id = t.id
-                    WHERE t.user_id = $1 AND p.status = 'completed'
-                        AND p.started_at >= NOW() - INTERVAL '30 days'
-                    GROUP BY EXTRACT(hour FROM started_at)
+                    FROM pomodoro p
+                    JOIN task t ON p."taskId" = t.id
+                    WHERE t."userId" = $1 AND p.status = 'completed'
+                        AND p."startedAt" >= NOW() - INTERVAL '30 days'
+                    GROUP BY EXTRACT(hour FROM "startedAt")
                     ORDER BY pomodoro_count DESC
                     LIMIT 1
                 """, user_id)
                 
-                # Current streak
+                # Current streak - usando tabela correta do Toivo
                 current_streak = await conn.fetchval("""
                     WITH daily_completions AS (
-                        SELECT DATE(updated_at) as completion_date
-                        FROM tasks
-                        WHERE user_id = $1 AND status = 'completed'
-                        GROUP BY DATE(updated_at)
+                        SELECT DATE("updatedAt") as completion_date
+                        FROM task
+                        WHERE "userId" = $1 AND status = 'completed'
+                        GROUP BY DATE("updatedAt")
                         HAVING COUNT(*) > 0
                         ORDER BY completion_date DESC
                     ),
@@ -133,22 +130,21 @@ class DatabaseManager:
                         )
                 """, user_id)
                 
-                # Lumi memory
+                # Lumi memory - usando tabela correta do Toivo
                 lumi_memory = await conn.fetchrow("""
-                    SELECT personality_profile, behavior_patterns, achievements, 
-                           contextual_memory, current_mood, interaction_count,
-                           created_at, updated_at
-                    FROM lumi_memory WHERE user_id = $1
+                    SELECT "personalityProfile", "behaviorPatterns", achievements, 
+                           "contextualMemory", "currentMood", "interactionCount",
+                           "createdAt", "updatedAt"
+                    FROM lumi_memory WHERE "userId" = $1
                 """, user_id)
-                
-                # Recent pomodoros (today)
+                  # Recent pomodoros (today) - usando tabela correta do Toivo
                 today_pomodoros = await conn.fetch("""
-                    SELECT p.duration, p.status, p.started_at, p.completed_at, t.title
-                    FROM pomodoros p
-                    JOIN tasks t ON p.task_id = t.id
-                    WHERE t.user_id = $1 
-                        AND DATE(p.started_at) = CURRENT_DATE
-                    ORDER BY p.started_at DESC
+                    SELECT p.duration, p.status, p."startedAt", p."completedAt", t.title
+                    FROM pomodoro p
+                    JOIN task t ON p."taskId" = t.id
+                    WHERE t."userId" = $1 
+                        AND DATE(p."startedAt") = CURRENT_DATE
+                    ORDER BY p."startedAt" DESC
                 """, user_id)
                 
                 return {
@@ -166,31 +162,32 @@ class DatabaseManager:
                 return {"error": str(e)}
     
     async def update_lumi_memory(self, user_id: str, memory_data: Dict[str, Any]) -> bool:
-        """Update Lumi's memory for a user"""
+        """Update Lumi's memory for a user - usando tabela correta do Toivo"""
         async with self.get_connection() as conn:
             try:
                 await conn.execute("""
                     INSERT INTO lumi_memory (
-                        user_id, personality_profile, behavior_patterns, 
-                        achievements, contextual_memory, current_mood, 
-                        interaction_count, created_at, updated_at
-                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
-                    ON CONFLICT (user_id) DO UPDATE SET
-                        personality_profile = EXCLUDED.personality_profile,
-                        behavior_patterns = EXCLUDED.behavior_patterns,
+                        "userId", "personalityProfile", "behaviorPatterns", 
+                        achievements, "contextualMemory", "currentMood", 
+                        "interactionCount", "helpfulnessScore", "createdAt", "updatedAt"
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
+                    ON CONFLICT ("userId") DO UPDATE SET
+                        "personalityProfile" = EXCLUDED."personalityProfile",
+                        "behaviorPatterns" = EXCLUDED."behaviorPatterns",
                         achievements = EXCLUDED.achievements,
-                        contextual_memory = EXCLUDED.contextual_memory,
-                        current_mood = EXCLUDED.current_mood,
-                        interaction_count = lumi_memory.interaction_count + 1,
-                        updated_at = NOW()
+                        "contextualMemory" = EXCLUDED."contextualMemory",
+                        "currentMood" = EXCLUDED."currentMood",
+                        "interactionCount" = lumi_memory."interactionCount" + 1,
+                        "helpfulnessScore" = EXCLUDED."helpfulnessScore",
+                        "updatedAt" = NOW()
                 """, 
                 user_id,
                 memory_data.get("personality_profile", "{}"),
                 memory_data.get("behavior_patterns", "{}"),
                 memory_data.get("achievements", "{}"),
                 memory_data.get("contextual_memory", "{}"),
-                memory_data.get("current_mood", "neutral"),
-                memory_data.get("interaction_count", 0)
+                memory_data.get("current_mood", "encouraging"),                memory_data.get("interaction_count", 0),
+                memory_data.get("helpfulness_score", 0)
                 )
                 return True
             except Exception as e:
@@ -198,26 +195,50 @@ class DatabaseManager:
                 return False
     
     async def create_task(self, user_id: str, task_data: Dict[str, Any]) -> Optional[str]:
-        """Create a new task"""
+        """Create a new task - usando tabela correta do Toivo"""
         async with self.get_connection() as conn:
             try:
-                task_id = await conn.fetchval("""
-                    INSERT INTO tasks (
-                        user_id, title, description, priority, status,
-                        estimated_pomodoros, completed_pomodoros, 
-                        created_at, due_date, updated_at
-                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), $8, NOW())
+                # Validar dados obrigatórios
+                if not task_data.get("title"):
+                    logger.error("Task title is required")
+                    return None
+                
+                # Preparar due_date se fornecido
+                due_date = None
+                if task_data.get("due_date"):
+                    due_date_str = task_data["due_date"]
+                    time_str = task_data.get("time", "00:00")
+                    if due_date_str and time_str:
+                        try:
+                            due_date = f"{due_date_str} {time_str}:00"
+                        except:
+                            due_date = due_date_str
+                
+                # Log para debugging
+                logger.info(f"Creating task for user {user_id}: {task_data.get('title')}")
+                logger.info(f"Task data: {task_data}")
+                
+                # Usar a tabela correta do Toivo com camelCase
+                task_id = await conn.fetchval("""                    INSERT INTO task (
+                        "userId", title, description, priority, status,
+                        "estimatedPomodoros", "completedPomodoros", 
+                        "createdAt", "dueDate", "updatedAt", "startTime", "endTime"
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), $8, NOW(), $9, $10)
                     RETURNING id
                 """,
-                user_id,
+                user_id,  # UUID do usuário
                 task_data.get("title", ""),
                 task_data.get("description", ""),
-                task_data.get("priority", "medium"),
-                task_data.get("status", "pending"),
+                task_data.get("priority", "MEDIUM"),
+                task_data.get("status", "PENDING"),
                 task_data.get("estimated_pomodoros", 1),
                 0,
-                task_data.get("due_date")
+                due_date,
+                task_data.get("start_time"),
+                task_data.get("end_time")
                 )
+                
+                logger.info(f"✅ Task created successfully with ID: {task_id}")
                 return str(task_id)
             except Exception as e:
                 logger.error(f"Error creating task: {e}")
