@@ -1,10 +1,15 @@
 import os
+import os
 from typing import Optional
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Gemini AI Configuration
 GEMINI_CONFIG = {
-    "api_key": "AIzaSyAButmMFCGLI48y2BeU1kAdOkL1rggdujA",
-    "model_name": "gemma-2-2b-it",
+    "api_key": os.getenv("GEMINI_API_KEY"),
+    "model_name": os.getenv("GEMINI_MODEL", "gemini-1.5-flash"),
     "temperature": 0.7,
     "max_output_tokens": 1024,
     "top_p": 0.8,
