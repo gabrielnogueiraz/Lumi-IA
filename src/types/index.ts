@@ -105,3 +105,11 @@ export interface UserContext {
     communicationStyle?: string
   }
 }
+
+export interface TaskResponse {
+  success: boolean
+  message: string
+  taskAction?: string
+  conflictDetected?: boolean
+  suggestionsMessage?: string
+}
