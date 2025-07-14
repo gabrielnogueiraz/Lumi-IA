@@ -1,7 +1,8 @@
 import { UserService } from '../user/userService'
 import { TaskService } from '../task/taskService'
+import { TaskAssistant } from '../task/taskAssistant'
 import { MemoryService } from '../memory/memoryService'
-import { UserContext, EmotionalAnalysis, LumiResponse } from '../../types'
+import { UserContext, EmotionalAnalysis, LumiResponse, TaskResponse } from '../../types'
 import { analyzeEmotion } from '../../utils/emotionAnalyzer'
 import { buildLumiPrompt, extractMemoryFromResponse } from '../../utils/promptBuilder'
 import { prioritizeMemories } from '../../utils/helpers'
@@ -9,11 +10,13 @@ import { prioritizeMemories } from '../../utils/helpers'
 export class AssistantService {
   private userService: UserService
   private taskService: TaskService
+  private taskAssistant: TaskAssistant
   private memoryService: MemoryService
 
   constructor() {
     this.userService = new UserService()
     this.taskService = new TaskService()
+    this.taskAssistant = new TaskAssistant()
     this.memoryService = new MemoryService()
   }
 
@@ -69,23 +72,41 @@ export class AssistantService {
     emotionalAnalysis: EmotionalAnalysis
     prioritizedMemories: any[]
     prompt: string
+    taskResponse?: TaskResponse
   }> {
     // Analisa emoção da mensagem
     const emotionalAnalysis = analyzeEmotion(message)
 
-    // Prioriza memórias baseado na relevância com a mensagem
+    // Verifica se é uma solicitação relacionada a tarefas
+    const taskResponse = await this.taskAssistant.processTaskRequest(
+      context.user.id,
+      message,
+      context.user.name
+    )
+
+    // Se foi processada como tarefa e foi bem-sucedida, retorna resposta específica
+    if (taskResponse.success) {
+      return {
+        emotionalAnalysis,
+        prioritizedMemories: [],
+        prompt: '', // Prompt vazio pois a resposta já está pronta
+        taskResponse
+      }
+    }
+
+    // Continua com o fluxo normal se não foi uma tarefa
     const prioritizedMemories = prioritizeMemories(context.recentMemories, message)
 
-    // Constrói o prompt para a IA
     const prompt = buildLumiPrompt(message, {
       ...context,
-      recentMemories: prioritizedMemories.slice(0, 8) // Limita para as 8 mais relevantes
+      recentMemories: prioritizedMemories.slice(0, 8)
     }, emotionalAnalysis)
 
     return {
       emotionalAnalysis,
       prioritizedMemories,
-      prompt
+      prompt,
+      taskResponse: taskResponse.success ? taskResponse : undefined
     }
   }
 

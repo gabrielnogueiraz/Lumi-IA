@@ -26,8 +26,25 @@ export async function assistantRoutes(fastify: FastifyInstance) {
       const {
         emotionalAnalysis,
         prioritizedMemories,
-        prompt
+        prompt,
+        taskResponse
       } = await assistantService.analyzeUserMessage(body.message, userContext)
+
+      // Se foi uma resposta de tarefa, retorna ela diretamente
+      if (taskResponse && taskResponse.success) {
+        reply.type('text/plain; charset=utf-8')
+        reply.header('Cache-Control', 'no-cache')
+        reply.header('Connection', 'keep-alive')
+        
+        let fullMessage = taskResponse.message
+        if (taskResponse.suggestionsMessage) {
+          fullMessage += '\n\n' + taskResponse.suggestionsMessage
+        }
+        
+        reply.raw.write(fullMessage)
+        reply.raw.end()
+        return
+      }
 
       // Busca sugestões baseadas no estado emocional
       const suggestions = await assistantService.getTaskSuggestions(user.id, emotionalAnalysis)
@@ -114,8 +131,33 @@ export async function assistantRoutes(fastify: FastifyInstance) {
       const {
         emotionalAnalysis,
         prioritizedMemories,
-        prompt
+        prompt,
+        taskResponse
       } = await assistantService.analyzeUserMessage(body.message, userContext)
+
+      // Se foi uma resposta de tarefa, retorna ela estruturada
+      if (taskResponse && taskResponse.success) {
+        let fullMessage = taskResponse.message
+        if (taskResponse.suggestionsMessage) {
+          fullMessage += '\n\n' + taskResponse.suggestionsMessage
+        }
+
+        return reply.send({
+          success: true,
+          data: {
+            message: fullMessage,
+            emotionalTone: getEmotionalTone(emotionalAnalysis.responseStrategy),
+            taskAction: taskResponse.taskAction,
+            conflictDetected: taskResponse.conflictDetected,
+            context: {
+              detectedMood: emotionalAnalysis.detectedMood,
+              confidence: emotionalAnalysis.confidence,
+              strategy: emotionalAnalysis.responseStrategy,
+              isTaskResponse: true
+            }
+          }
+        })
+      }
 
       // Busca sugestões baseadas no estado emocional
       const suggestions = await assistantService.getTaskSuggestions(user.id, emotionalAnalysis)
