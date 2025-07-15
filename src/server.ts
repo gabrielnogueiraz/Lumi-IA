@@ -23,8 +23,22 @@ export async function buildServer() {
   // })
 
   // Configuração CORS simplificada para resolver conflitos
+  const allowedOrigins = [
+    'http://localhost:5000', 
+    'http://127.0.0.1:5000',
+    'https://usetoivo.vercel.app'
+  ]
+  
+  // Em produção, adiciona origens adicionais se configuradas
+  if (process.env.ADDITIONAL_CORS_ORIGINS) {
+    const additionalOrigins = process.env.ADDITIONAL_CORS_ORIGINS.split(',')
+    allowedOrigins.push(...additionalOrigins)
+  }
+  
+  console.log('🌐 CORS configurado para as origens:', allowedOrigins)
+  
   await server.register(cors, {
-    origin: ['http://localhost:5000', 'http://127.0.0.1:5000'],
+    origin: allowedOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
