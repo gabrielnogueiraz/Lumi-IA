@@ -94,6 +94,16 @@ export class AssistantService {
       }
     }
 
+    // Se foi uma ação de tarefa reconhecida mas precisa de mais informação
+    if (taskResponse.taskAction) {
+      return {
+        emotionalAnalysis,
+        prioritizedMemories: [],
+        prompt: '', // Prompt vazio pois a resposta já está pronta
+        taskResponse
+      }
+    }
+
     // Continua com o fluxo normal se não foi uma tarefa
     const prioritizedMemories = prioritizeMemories(context.recentMemories, message)
 
