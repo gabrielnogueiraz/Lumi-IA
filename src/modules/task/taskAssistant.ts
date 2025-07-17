@@ -1,9 +1,11 @@
 import { TaskService, TaskCreateData } from './taskService'
-import { analyzeTaskIntent, TaskIntent } from '../../utils/taskIntentAnalyzer'
+import { taskManager, TaskManager } from './taskManager'
+import { parseUserIntentFromLumi, ParsedIntent, hasTaskPotential } from '../../utils/intentParser'
 import { MemoryService } from '../memory/memoryService'
 
 export class TaskAssistant {
   private taskService = new TaskService()
+  private taskManager = taskManager
   private memoryService = new MemoryService()
 
   async processTaskRequest(
@@ -18,32 +20,41 @@ export class TaskAssistant {
     suggestionsMessage?: string
   }> {
     try {
-      const intent = analyzeTaskIntent(message)
-      
-      if (intent.action === 'NONE' || intent.confidence < 0.5) {
+      // Verificação rápida se tem potencial de ser tarefa
+      if (!hasTaskPotential(message)) {
         return {
           success: false,
           message: this.getHelpfulResponse(userName, message)
         }
       }
 
-      switch (intent.action) {
-        case 'CREATE':
+      // Usa o novo sistema LLM para analisar intenção
+      const intent = await parseUserIntentFromLumi(message, userId)
+      
+      if (intent.intent === 'none' || (intent.confidence && intent.confidence < 0.5)) {
+        return {
+          success: false,
+          message: this.getHelpfulResponse(userName, message)
+        }
+      }
+
+      switch (intent.intent) {
+        case 'create_task':
           return await this.handleCreateTask(userId, intent, userName)
         
-        case 'UPDATE':
+        case 'update_task':
           return await this.handleUpdateTask(userId, intent, userName)
         
-        case 'DELETE':
+        case 'delete_task':
           return await this.handleDeleteTask(userId, intent, userName)
         
-        case 'COMPLETE':
+        case 'complete_task':
           return await this.handleCompleteTask(userId, intent, userName)
         
-        case 'LIST':
+        case 'list_tasks':
           return await this.handleListTasks(userId, userName)
         
-        case 'SEARCH':
+        case 'search_tasks':
           return await this.handleSearchTasks(userId, intent, userName)
         
         default:
@@ -63,80 +74,78 @@ export class TaskAssistant {
 
   private async handleCreateTask(
     userId: string, 
-    intent: TaskIntent, 
+    intent: ParsedIntent, 
     userName: string
   ): Promise<any> {
-    const { extractedData } = intent
     
-    if (!extractedData.title) {
+    if (!intent.title) {
       return {
         success: false,
         message: `${userName}, preciso saber o que você quer agendar! 📝 Pode me dar mais detalhes sobre essa tarefa?`
       }
     }
 
-    // Verificar conflitos se necessário
-    let conflictMessage = ''
-    if (intent.conflictCheck && extractedData.startAt && extractedData.endAt) {
-      const conflicts = await this.taskService.findTasksInTimeRange(
+    try {
+      // Usar o novo TaskManager para criar a tarefa
+      const result = await this.taskManager.createTask({
         userId,
-        extractedData.startAt,
-        extractedData.endAt
-      )
+        title: intent.title,
+        description: intent.description,
+        priority: intent.priority || 'MEDIUM',
+        startAt: intent.startAt ? new Date(intent.startAt) : undefined,
+        endAt: intent.endAt ? new Date(intent.endAt) : undefined,
+        pomodoroGoal: intent.pomodoroGoal || 1,
+      })
 
-      if (conflicts.length > 0) {
-        const conflictTask = conflicts[0]
-        const conflictTime = extractedData.startAt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-        
-        conflictMessage = `\n\n⚠️ Opa! Notei que você já tem "${conflictTask.title}" marcado para ${conflictTime}. ` +
-                         `Como "${extractedData.title}" parece ser importante, quer que eu remarcque a outra tarefa? ` +
-                         `Ou prefere escolher outro horário para essa nova? 🤔`
+      if (!result.success) {
+        // Tratar diferentes tipos de erro
+        if (result.error === 'TIME_CONFLICT') {
+          return {
+            success: true,
+            taskAction: 'CREATE_WITH_CONFLICT',
+            message: `Entendi, ${userName}! Você quer agendar "${intent.title}", mas detectei um conflito de horário. ${result.message}`,
+            conflictDetected: true
+          }
+        }
         
         return {
-          success: true,
-          taskAction: 'CREATE_WITH_CONFLICT',
-          message: `Entendi, ${userName}! Você quer agendar "${extractedData.title}" como prioridade ${this.getPriorityEmoji(extractedData.priority || 'MEDIUM')}.${conflictMessage}`,
-          conflictDetected: true
+          success: false,
+          message: `${userName}, ${result.message} 🤔`
         }
       }
-    }
 
-    const defaultColumnId = await this.taskService.getDefaultColumn(userId)
-    
-    const taskData: TaskCreateData = {
-      title: extractedData.title,
-      description: extractedData.description,
-      priority: extractedData.priority || 'MEDIUM',
-      startAt: extractedData.startAt,
-      endAt: extractedData.endAt,
-      pomodoroGoal: extractedData.pomodoroGoal,
-      columnId: defaultColumnId
-    }
+      const task = result.data
+      
+      // Salvar padrão na memória
+      await this.memoryService.create({
+        userId,
+        type: 'PRODUCTIVITY_PATTERN',
+        content: `Criou tarefa "${task.title}" com prioridade ${task.priority} ${intent.startAt ? `para ${new Date(intent.startAt).toLocaleString('pt-BR')}` : ''}`,
+        importance: 'MEDIUM',
+        tags: ['task_creation', task.priority.toLowerCase(), ...(intent.tags || [])]
+      })
 
-    const task = await this.taskService.createTask(userId, taskData)
-    
-    // Salvar padrão na memória
-    await this.memoryService.create({
-      userId,
-      type: 'PRODUCTIVITY_PATTERN',
-      content: `Criou tarefa "${task.title}" com prioridade ${task.priority} ${extractedData.startAt ? `para ${extractedData.startAt.toLocaleString('pt-BR')}` : ''}`,
-      importance: 'MEDIUM',
-      tags: ['task_creation', task.priority.toLowerCase(), ...(extractedData.tags || [])]
-    })
+      // Gerar resposta personalizada
+      const timeInfo = intent.startAt 
+        ? ` para ${this.formatDate(new Date(intent.startAt))} às ${new Date(intent.startAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
+        : ''
 
-    // Gerar resposta personalizada
-    const timeInfo = extractedData.startAt 
-      ? ` para ${this.formatDate(extractedData.startAt)} às ${extractedData.startAt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
-      : ''
+      const priorityText = this.getPriorityDescription(task.priority)
+      const successMessage = this.getCreationSuccessMessage(userName, task.title, timeInfo, priorityText)
 
-    const priorityText = this.getPriorityDescription(task.priority)
-    const successMessage = this.getCreationSuccessMessage(userName, task.title, timeInfo, priorityText)
+      return {
+        success: true,
+        taskAction: 'CREATED',
+        message: successMessage,
+        suggestionsMessage: this.getTaskSuggestion(task.priority)
+      }
 
-    return {
-      success: true,
-      taskAction: 'CREATED',
-      message: successMessage,
-      suggestionsMessage: this.getTaskSuggestion(task.priority)
+    } catch (error) {
+      console.error('Erro ao criar tarefa via TaskManager:', error)
+      return {
+        success: false,
+        message: `${userName}, tive um problema ao criar a tarefa. Pode tentar novamente? 🤖`
+      }
     }
   }
 
@@ -296,10 +305,10 @@ export class TaskAssistant {
 
   private async handleCompleteTask(
     userId: string, 
-    intent: TaskIntent, 
+    intent: ParsedIntent, 
     userName: string
   ): Promise<any> {
-    const { taskReference } = intent.extractedData
+    const { taskReference } = intent
     
     if (!taskReference) {
       const recentTasks = await this.taskService.findPendingTasks(userId)
@@ -312,6 +321,7 @@ export class TaskAssistant {
         
         return {
           success: false,
+          taskAction: 'COMPLETE',
           message: noTasksMessages[Math.floor(Math.random() * noTasksMessages.length)]
         }
       }
@@ -324,6 +334,7 @@ export class TaskAssistant {
       
       return {
         success: false,
+        taskAction: 'COMPLETE',
         message: message + '\n💬 Me diga o número ou nome da tarefa que completou!'
       }
     }
@@ -345,6 +356,7 @@ export class TaskAssistant {
     if (tasks.length === 0) {
       return {
         success: false,
+        taskAction: 'COMPLETE',
         message: `${userName}, não consegui encontrar uma tarefa que combine com "${taskReference}". 🔍\n\nPode ser mais específico ou me dizer o nome exato da tarefa?`
       }
     }
@@ -358,34 +370,55 @@ export class TaskAssistant {
       })
       return {
         success: false,
+        taskAction: 'COMPLETE',
         message: message + '\n💬 Me diga o número da tarefa!'
       }
     }
 
     const task = tasks[0]
-    await this.taskService.completeTask(task.id, userId)
     
-    // Salvar padrão de conclusão
-    const now = new Date()
-    const isOnTime = !task.endAt || now <= task.endAt
-    
-    await this.memoryService.create({
-      userId,
-      type: 'PRODUCTIVITY_PATTERN',
-      content: `Concluiu tarefa "${task.title}" (${task.priority}) ${isOnTime ? 'no prazo' : 'com atraso'}`,
-      importance: 'MEDIUM',
-      tags: ['task_completion', task.priority.toLowerCase(), isOnTime ? 'on_time' : 'late']
-    })
+    try {
+      // Usar o novo TaskManager para marcar como concluída
+      const result = await this.taskManager.completeTask(userId, task.id)
+      
+      if (!result.success) {
+        return {
+          success: false,
+          message: `${userName}, ${result.message} 🤔`
+        }
+      }
 
-    // Mensagem de sucesso personalizada
-    const successMessage = this.getCompletionMessage(userName, task.title, task.priority, isOnTime)
-    const celebration = this.getCelebrationMessage(task.priority, isOnTime)
+      const completedTask = result.data
+      
+      // Salvar padrão de conclusão
+      const now = new Date()
+      const isOnTime = !completedTask.endAt || now <= completedTask.endAt
+      
+      await this.memoryService.create({
+        userId,
+        type: 'PRODUCTIVITY_PATTERN',
+        content: `Concluiu tarefa "${completedTask.title}" (${completedTask.priority}) ${isOnTime ? 'no prazo' : 'com atraso'}`,
+        importance: 'MEDIUM',
+        tags: ['task_completion', completedTask.priority.toLowerCase(), isOnTime ? 'on_time' : 'late']
+      })
 
-    return {
-      success: true,
-      taskAction: 'COMPLETED',
-      message: successMessage,
-      suggestionsMessage: celebration
+      // Mensagem de sucesso personalizada
+      const successMessage = this.getCompletionMessage(userName, completedTask.title, completedTask.priority, isOnTime)
+      const celebration = this.getCelebrationMessage(completedTask.priority, isOnTime)
+
+      return {
+        success: true,
+        taskAction: 'COMPLETED',
+        message: successMessage,
+        suggestionsMessage: celebration
+      }
+
+    } catch (error) {
+      console.error('Erro ao completar tarefa via TaskManager:', error)
+      return {
+        success: false,
+        message: `${userName}, tive um problema ao marcar a tarefa como concluída. Pode tentar novamente? 🤖`
+      }
     }
   }
 
@@ -419,16 +452,17 @@ export class TaskAssistant {
 
   private async handleDeleteTask(
     userId: string, 
-    intent: TaskIntent, 
+    intent: ParsedIntent, 
     userName: string
   ): Promise<any> {
-    const { taskReference } = intent.extractedData
+    const { taskReference } = intent
     
     if (!taskReference) {
       const recentTasks = await this.taskService.findPendingTasks(userId)
       if (recentTasks.length === 0) {
         return {
           success: false,
+          taskAction: 'DELETE',
           message: `${userName}, você não tem tarefas para remover! 🎉 Sua agenda está limpinha!`
         }
       }
@@ -441,6 +475,7 @@ export class TaskAssistant {
       
       return {
         success: false,
+        taskAction: 'DELETE',
         message: message + '\n💬 Me diga o número ou nome da tarefa!'
       }
     }
@@ -461,6 +496,7 @@ export class TaskAssistant {
     if (tasks.length === 0) {
       return {
         success: false,
+        taskAction: 'DELETE',
         message: `${userName}, não encontrei uma tarefa que combine com "${taskReference}". 🔍\n\nPode ser mais específico com o nome da tarefa?`
       }
     }
@@ -474,6 +510,7 @@ export class TaskAssistant {
       })
       return {
         success: false,
+        taskAction: 'DELETE',
         message: message + '\n💬 Me diga o número da tarefa!'
       }
     }
@@ -506,23 +543,226 @@ export class TaskAssistant {
 
   private async handleUpdateTask(
     userId: string, 
-    intent: TaskIntent, 
+    intent: ParsedIntent, 
     userName: string
   ): Promise<any> {
-    return {
-      success: false,
-      message: 'A funcionalidade de edição ainda está sendo aprimorada. Por enquanto, que tal remover a tarefa antiga e criar uma nova? 😊'
+    const { taskReference } = intent
+    
+    if (!taskReference) {
+      return {
+        success: false,
+        message: `${userName}, preciso saber qual tarefa você quer editar! 📝 Me diga o nome da tarefa e o que quer alterar.`
+      }
+    }
+
+    // Buscar a tarefa
+    let tasks = await this.taskService.searchTasks(userId, taskReference, 3)
+    
+    if (tasks.length === 0) {
+      const words = taskReference.split(' ')
+      for (const word of words) {
+        if (word.length > 3) {
+          tasks = await this.taskService.searchTasks(userId, word, 2)
+          if (tasks.length > 0) break
+        }
+      }
+    }
+    
+    if (tasks.length === 0) {
+      return {
+        success: false,
+        message: `${userName}, não encontrei uma tarefa que combine com "${taskReference}". 🔍\n\nPode ser mais específico com o nome da tarefa?`
+      }
+    }
+
+    // Se encontrou múltiplas, mostra opções
+    if (tasks.length > 1) {
+      let message = `${userName}, encontrei algumas opções. Qual você quer editar?\n\n`
+      tasks.slice(0, 3).forEach((task, index) => {
+        const priority = this.getPriorityIcon(task.priority)
+        message += `${index + 1}. ${priority} ${task.title}\n`
+      })
+      return {
+        success: false,
+        message: message + '\n💬 Me diga o número da tarefa!'
+      }
+    }
+
+    const task = tasks[0]
+    
+    try {
+      // Preparar dados para atualização baseados no que foi extraído
+      const updateData: any = {}
+      
+      if (intent.title && intent.title !== task.title) {
+        updateData.title = intent.title
+      }
+      
+      if (intent.description) {
+        updateData.description = intent.description
+      }
+      
+      if (intent.priority && intent.priority !== task.priority) {
+        updateData.priority = intent.priority
+      }
+      
+      if (intent.startAt) {
+        updateData.startAt = new Date(intent.startAt)
+      }
+      
+      if (intent.endAt) {
+        updateData.endAt = new Date(intent.endAt)
+      }
+      
+      if (intent.pomodoroGoal && intent.pomodoroGoal !== task.pomodoroGoal) {
+        updateData.pomodoroGoal = intent.pomodoroGoal
+      }
+
+      // Se não há nada para atualizar, retorna mensagem explicativa
+      if (Object.keys(updateData).length === 0) {
+        return {
+          success: false,
+          message: `${userName}, não identifiquei o que você quer alterar na tarefa "${task.title}". Pode me dizer especificamente o que quer mudar? 🤔\n\nPor exemplo: "alterar prioridade", "mudar horário", "trocar título", etc.`
+        }
+      }
+
+      // Usar o novo TaskManager para atualizar a tarefa
+      const result = await this.taskManager.updateTask({
+        userId,
+        taskId: task.id,
+        ...updateData
+      })
+      
+      if (!result.success) {
+        return {
+          success: false,
+          message: `${userName}, ${result.message} 🤔`
+        }
+      }
+
+      const updatedTask = result.data
+      
+      // Salvar na memória o padrão de edição
+      await this.memoryService.create({
+        userId,
+        type: 'PRODUCTIVITY_PATTERN',
+        content: `Editou tarefa "${updatedTask.title}" - alterações: ${Object.keys(updateData).join(', ')}`,
+        importance: 'MEDIUM',
+        tags: ['task_update', updatedTask.priority.toLowerCase()]
+      })
+
+      // Criar mensagem de sucesso detalhada
+      const changes = Object.keys(updateData).map(key => {
+        switch (key) {
+          case 'title': return `título para "${updateData.title}"`
+          case 'priority': return `prioridade para ${this.getPriorityDescription(updateData.priority)}`
+          case 'startAt': return `horário de início para ${updateData.startAt.toLocaleString('pt-BR')}`
+          case 'endAt': return `horário de fim para ${updateData.endAt.toLocaleString('pt-BR')}`
+          case 'pomodoroGoal': return `meta de pomodoros para ${updateData.pomodoroGoal}`
+          case 'description': return 'descrição'
+          default: return key
+        }
+      }).join(', ')
+
+      const successMessages = [
+        `Perfeito, ${userName}! ✅ Atualizei "${updatedTask.title}" - ${changes}.`,
+        `Feito, ${userName}! 🎯 A tarefa "${updatedTask.title}" foi editada - ${changes}.`,
+        `Ótimo, ${userName}! ⭐ "${updatedTask.title}" está atualizada - ${changes}.`
+      ]
+
+      return {
+        success: true,
+        taskAction: 'UPDATED',
+        message: successMessages[Math.floor(Math.random() * successMessages.length)],
+        suggestionsMessage: this.getTaskSuggestion(updatedTask.priority)
+      }
+
+    } catch (error) {
+      console.error('Erro ao atualizar tarefa via TaskManager:', error)
+      return {
+        success: false,
+        message: `${userName}, tive um problema ao editar a tarefa. Pode tentar novamente? 🤖`
+      }
     }
   }
 
   private async handleSearchTasks(
     userId: string, 
-    intent: TaskIntent, 
+    intent: ParsedIntent, 
     userName: string
   ): Promise<any> {
-    return {
-      success: false,
-      message: 'Pesquisa específica ainda em desenvolvimento. Use "listar tarefas" para ver todas! 📋'
+    const { taskReference } = intent
+    
+    if (!taskReference) {
+      return {
+        success: false,
+        message: `${userName}, me diga o que você está procurando! 🔍 Posso buscar por título, descrição ou palavra-chave das suas tarefas.`
+      }
+    }
+
+    try {
+      // Usar o TaskManager para buscar tarefas
+      const result = await this.taskManager.searchTasks(userId, taskReference, 10)
+      
+      if (!result.success) {
+        return {
+          success: false,
+          message: `${userName}, ${result.message} 🤔`
+        }
+      }
+
+      const tasks = result.data
+      
+      if (tasks.length === 0) {
+        return {
+          success: false,
+          message: `${userName}, não encontrei nenhuma tarefa com "${taskReference}". 🔍\n\nTente usar outras palavras-chave ou verifique se digitou corretamente!`
+        }
+      }
+
+      // Construir resposta com as tarefas encontradas
+      let message = `${userName}, encontrei ${tasks.length} tarefa${tasks.length > 1 ? 's' : ''} com "${taskReference}":\n\n`
+      
+      tasks.slice(0, 8).forEach((task: any, index: number) => {
+        const priority = this.getPriorityIcon(task.priority)
+        const status = task.completed ? '✅' : '⏳'
+        const timeInfo = task.startAt 
+          ? ` - ${this.formatDate(task.startAt)} às ${task.startAt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
+          : ''
+        
+        message += `${index + 1}. ${status} ${priority} ${task.title}${timeInfo}\n`
+        
+        if (task.description && task.description.length > 0) {
+          message += `   📝 ${task.description.substring(0, 50)}${task.description.length > 50 ? '...' : ''}\n`
+        }
+      })
+
+      if (tasks.length > 8) {
+        message += `\n... e mais ${tasks.length - 8} tarefas encontradas.`
+      }
+
+      // Salvar na memória o padrão de busca
+      await this.memoryService.create({
+        userId,
+        type: 'PRODUCTIVITY_PATTERN',
+        content: `Buscou por "${taskReference}" e encontrou ${tasks.length} tarefas`,
+        importance: 'LOW',
+        tags: ['task_search', 'productivity']
+      })
+
+      return {
+        success: true,
+        taskAction: 'SEARCHED',
+        message: message,
+        suggestionsMessage: tasks.length > 5 ? 'Dica: Use termos mais específicos para refinar sua busca! 🎯' : ''
+      }
+
+    } catch (error) {
+      console.error('Erro ao buscar tarefas via TaskManager:', error)
+      return {
+        success: false,
+        message: `${userName}, tive um problema ao buscar as tarefas. Pode tentar novamente? 🤖`
+      }
     }
   }
 
