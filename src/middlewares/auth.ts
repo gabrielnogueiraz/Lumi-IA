@@ -33,13 +33,27 @@ export async function authMiddleware(
     }
 
     console.log('✅ AuthMiddleware: Autenticação bem-sucedida para usuário:', payload.userId)
+    console.log('🔍 AuthMiddleware: Payload completo:', JSON.stringify(payload, null, 2))
+    
+    // Validar se o userId é válido
+    if (!payload.userId || typeof payload.userId !== 'string') {
+      console.error('❌ AuthMiddleware: userId inválido no payload:', payload.userId)
+      return reply.status(401).send({
+        error: 'Unauthorized',
+        message: 'Token com dados inválidos'
+      })
+    }
     
     // Adiciona o usuário ao request
-    ;(request as any).user = {
-      id: payload.userId,  // Agora garantimos que payload.userId estará sempre definido
+    const user = {
+      id: payload.userId,
       name: payload.name,
       email: payload.email
     }
+    
+    ;(request as any).user = user
+    
+    console.log('🔍 AuthMiddleware: Usuário definido no request:', JSON.stringify(user, null, 2))
 
     // Atualiza lastCheckIn em background (não bloqueia a requisição)
     setImmediate(() => {
