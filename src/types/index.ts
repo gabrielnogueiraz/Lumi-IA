@@ -91,14 +91,10 @@ export interface TaskContextMatch {
 }
 
 export interface EmotionalAnalysis {
-  detectedMood: 'happy' | 'sad' | 'anxious' | 'motivated' | 'tired' | 'focused' | 'stressed' | 'neutral' | 
-                'confused' | 'overwhelmed' | 'procrastinating' | 'excited' | 'determined' | 'frustrated' |
-                'calm' | 'energetic' | 'melancholy' | 'hopeful' | 'stuck' | 'desmotivacao' | 'procrastinacao' |
-                'confusao' | 'sobrecarregado' | 'entusiasmo' | 'foco'
+  detectedMood: 'happy' | 'sad' | 'anxious' | 'motivated' | 'tired' | 'focused' | 'stressed' | 'neutral' | 'confused' | 'overwhelmed' | 'procrastinating' | 'excited' | 'determined' | 'frustrated' | 'calm' | 'energetic' | 'melancholy' | 'hopeful' | 'stuck' | 'desmotivacao' | 'procrastinacao' | 'confusao' | 'sobrecarregado' | 'entusiasmo' | 'foco' | 'proud' | 'curious'
   confidence: number
   keywords: string[]
-  responseStrategy: 'encourage' | 'calm' | 'motivate' | 'support' | 'energize' | 'guide' | 'reassure' | 
-                    'challenge' | 'ground' | 'gentle_push' | 'empathize' | 'structure'
+  responseStrategy: 'calm' | 'encourage' | 'motivate' | 'support' | 'energize' | 'guide' | 'reassure' | 'challenge' | 'ground' | 'gentle_push' | 'empathize' | 'structure' | 'share_origin'
   emotionalIntensity: 'low' | 'medium' | 'high'
   needsSupport: boolean
   contextualClues: string[]
