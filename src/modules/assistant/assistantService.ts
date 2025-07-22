@@ -255,37 +255,20 @@ export class AssistantService {
   async extractAndSaveMemories(
     userId: string,
     userMessage: string,
-    aiResponse: string,
-    emotionalAnalysis: EmotionalAnalysis
+    response: string
   ): Promise<void> {
-    const extractedInfo = extractMemoryFromResponse(aiResponse, userMessage)
+    const extractedMemories = extractMemoryFromResponse(response, userMessage)
     
-    // Salva informações importantes detectadas na conversa
-    for (const info of extractedInfo) {
-      if (info.length > 5) { // Só salva se tem informação útil
+    for (const memory of extractedMemories) {
+      if (memory.length > 10) { // Só salva memórias significativas
         await this.memoryService.create({
           userId,
-          type: this.determineMemoryType(info, userMessage),
-          content: info,
+          type: 'COMMUNICATION_STYLE',
+          content: memory,
           importance: 'MEDIUM',
-          emotionalContext: emotionalAnalysis.detectedMood !== 'neutral' 
-            ? `Usuário estava ${emotionalAnalysis.detectedMood}` 
-            : undefined,
-          tags: [emotionalAnalysis.detectedMood, 'conversation']
+          tags: ['extracted_memory']
         })
       }
-    }
-
-    // Atualiza padrão de comunicação se necessário
-    if (emotionalAnalysis.confidence > 0.7) {
-      await this.updateCommunicationPattern(userId, emotionalAnalysis)
-    }
-
-    // 🧠 PROBLEMA 2 RESOLVIDO: Atualiza contexto com resposta da IA
-    const context = conversationContextService.getOrCreateContext(userId)
-    if (context.conversationHistory.length > 0) {
-      const lastInteraction = context.conversationHistory[context.conversationHistory.length - 1]
-      lastInteraction.aiResponse = aiResponse
     }
   }
 
