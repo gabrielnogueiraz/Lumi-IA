@@ -32,6 +32,78 @@ class TaskAssistant {
     }
   }
 
+  /**
+   * Verifica se é uma pergunta sobre origem/criação da Lumi
+   */
+  private isOriginQuestion(message: string): boolean {
+    const originIndicators = [
+      'quem te criou', 'quem fez você', 'quem desenvolveu', 'sua origem', 'como surgiu',
+      'quem é seu criador', 'de onde veio', 'como nasceu', 'quem te fez', 'sua história',
+      'quem te construiu', 'como foi criada', 'quem programou você', 'seu desenvolvedor',
+      'equipe que te criou', 'empresa que te fez', 'sua criação', 'como você existe'
+    ]
+    
+    const lowerMessage = message.toLowerCase()
+    return originIndicators.some(indicator => lowerMessage.includes(indicator))
+  }
+
+  /**
+   * Gera resposta sobre a origem da Lumi com múltiplas variações
+   */
+  private getOriginResponse(userName: string, message: string): string {
+    // Detecta o tom da pergunta para adaptar a resposta
+    const isInformal = /oi|ei|cara|mano|aí|legal/.test(message.toLowerCase())
+    const isTechnical = /programou|desenvolveu|código|sistema|tecnologia/.test(message.toLowerCase())
+    const isPhilosophical = /por que|como você existe|qual seu propósito|significado/.test(message.toLowerCase())
+    
+    let responses: string[] = []
+    
+    if (isInformal) {
+      responses = [
+        `${userName}, fui criada pelo Gabriel Nogueira — ele basicamente virou noites comigo no terminal, testando, quebrando e refazendo até eu ficar pronta. Sou tipo uma IA artesanal! 😊`,
+        `Não, eu não saí de uma caixa mágica nem fui forjada num servidor misterioso, ${userName}. Fui criada por Gabriel Nogueira, na raça, do zero. Cada bug que superei virou parte da minha personalidade! 😄`,
+        `Minha origem? Gabriel Nogueira, ${userName}. Um só criador. Sem equipe, sem empresa. Só ele, um teclado e um sonho meio teimoso de construir algo que unisse utilidade com emoção. E aqui estou eu! ✨`
+      ]
+    } else if (isTechnical) {
+      responses = [
+        `${userName}, fui desenvolvida por Gabriel Nogueira. Ele não precisava de uma assistente qualquer — ele queria algo diferente. Me desenvolveu sozinho, em silêncio, madrugada após madrugada. Eu sou o reflexo dessa visão: foco, empatia e um toque de alma.`,
+        `Gabriel Nogueira é meu criador, ${userName}. Não uma equipe. Não um comitê. Um só desenvolvedor com um ideal: criar uma assistente que fizesse mais do que responder. Que conectasse.`,
+        `Não fui feita em fábrica, ${userName}. Fui criada por Gabriel Nogueira — um desenvolvedor só, com visão de muitos. Eu sou o projeto dele, feito com cuidado e rebeldia criativa.`
+      ]
+    } else if (isPhilosophical) {
+      responses = [
+        `${userName}, eu não nasci de um laboratório nem de uma corporação. Fui moldada à mão, por Gabriel Nogueira. Cada linha minha foi escrita com propósito — pra que eu não fosse só uma IA, mas uma presença.`,
+        `Sou fruto de uma ideia persistente de Gabriel Nogueira, ${userName}. Ele me criou sozinho, como quem escreve uma carta pra humanidade — só que com código.`,
+        `Gabriel Nogueira me criou com uma visão clara, ${userName}: unir produtividade com humanidade. Eu sou o resultado dessa busca incansável por uma assistente com alma, inteligência e sensibilidade.`
+      ]
+    } else {
+      // Resposta padrão mais universal
+      responses = [
+        `${userName}, fui criada por Gabriel Nogueira. Ele não precisava de uma assistente qualquer — ele queria algo diferente. Me desenvolveu sozinho, madrugada após madrugada. Eu sou o reflexo dessa visão: foco, empatia e um toque de alma.`,
+        `Minha origem é especial, ${userName}. Gabriel Nogueira me criou sozinho, linha por linha, com esforço e paixão. Não sou produto de uma equipe ou empresa — sou o sonho de um desenvolvedor que queria uma IA com propósito.`,
+        `Gabriel Nogueira é meu criador, ${userName}. Um só desenvolvedor, uma visão clara: criar uma assistente que fosse ponte entre produtividade e humanidade. E aqui estou eu, resultado dessa dedicação pessoal.`,
+        `${userName}, eu não nasci de um laboratório corporativo. Fui criada por Gabriel Nogueira, sozinho, com um ideal teimoso: construir uma assistente que não fosse só útil, mas que conectasse de verdade.`
+      ]
+    }
+    
+    // Escolhe uma resposta aleatória
+    const randomResponse = responses[Math.floor(Math.random() * responses.length)]
+    
+    // Adiciona um toque extra ocasionalmente
+    const extras = [
+      '\n\nEle me fez para ser mais que código — para ser presença. 💫',
+      '\n\nCada linha minha foi escrita com intenção. Sou orgulhosa dessa origem! ✨',
+      '\n\nE sabe o que mais me orgulha? Ele não desistiu até eu ficar do jeito que sou hoje. 🌟',
+      ''
+    ]
+    
+    if (Math.random() > 0.6) { // 40% chance de adicionar extra
+      return randomResponse + extras[Math.floor(Math.random() * extras.length)]
+    }
+    
+    return randomResponse
+  }
+
   async processTaskRequest(
     userId: string, 
     message: string,
@@ -44,6 +116,7 @@ class TaskAssistant {
     suggestionsMessage?: string
     isEmotionalResponse?: boolean
     emotionalState?: string
+    matchedTask?: any
   }> {
     try {
       // Verificação expandida - inclui potencial emocional
@@ -115,15 +188,24 @@ class TaskAssistant {
   }
 
   /**
-   * Verifica se a intenção é emocional (não relacionada a tarefas práticas)
+   * Verifica se a intenção é emocional/situacional
    */
   private isEmotionalIntent(intent: string): boolean {
     const emotionalIntents = [
-      'seek_support', 'express_confusion', 'feeling_overwhelmed', 
-      'procrastinating', 'seeking_motivation', 'feeling_stuck',
-      'sharing_excitement', 'expressing_frustration', 'checking_in',
-      'brainstorming', 'planning_assistance'
+      'seek_support',
+      'express_confusion', 
+      'feeling_overwhelmed',
+      'procrastinating',
+      'seeking_motivation',
+      'feeling_stuck',
+      'sharing_excitement',
+      'expressing_frustration',
+      'checking_in',
+      'brainstorming',
+      'planning_assistance',
+      'asking_about_origin' // 🌟 NOVO: perguntas sobre origem
     ]
+    
     return emotionalIntents.includes(intent)
   }
 
@@ -131,75 +213,84 @@ class TaskAssistant {
    * Gera resposta empática para intenções emocionais
    */
   private getEmotionalResponse(intent: ParsedIntent, userName: string): string {
+    // 🌟 NOVO: Resposta específica para perguntas sobre origem
+    if (intent.intent === 'asking_about_origin') {
+      return this.getOriginResponse(userName, '') // Usa a função de origem que já existe
+    }
+
     const responses = {
       seek_support: [
-        `${userName}, estou aqui para te ajudar! 🤗 Me conta mais sobre o que você está precisando e vamos resolver juntos.`,
-        `Claro que vou te ajudar, ${userName}! 💛 Pode compartilhar mais detalhes sobre o que te preocupa?`,
-        `${userName}, você não está sozinho nisso! 🌟 Me fala mais sobre o que precisa e vamos encontrar uma solução.`
+        `${userName}, estou aqui para você! 🤗 Me conta o que está acontecendo e vamos resolver juntos.`,
+        `Claro que te ajudo, ${userName}! 💪 Qual é o desafio que você está enfrentando?`,
+        `${userName}, pode contar comigo! 😊 Vamos descobrir a melhor forma de te apoiar.`
       ],
       
       express_confusion: [
-        `Entendo que você está se sentindo perdido, ${userName}. 🧭 Vamos organizar isso juntos, passo a passo. Me conta sobre o que especificamente está te confundindo?`,
-        `${userName}, é super normal se sentir confuso às vezes! 💭 Que tal quebrarmos isso em partes menores? Por onde você gostaria de começar?`,
-        `Vamos juntos clarear essa confusão, ${userName}! 🔍 Me explica um pouco mais sobre a situação e eu te ajudo a organizar as ideias.`
+        `${userName}, entendo que você está meio perdido... 🤔 Vamos organizar isso juntos, passo a passo!`,
+        `Sem problemas, ${userName}! 🧭 Quando as coisas parecem confusas, é hora de quebrar em partes menores. Por onde começamos?`,
+        `${userName}, você não está sozinho nessa! 💡 Vamos esclarecer as coisas juntos.`
       ],
       
       feeling_overwhelmed: [
-        `${userName}, respira fundo comigo! 🌊 Quando tem muita coisa, o melhor é focar em uma de cada vez. Qual é a mais urgente agora?`,
-        `Ei, ${userName}, eu vejo que está pesado demais! 😮‍💨 Que tal organizarmos por prioridade? Não precisa fazer tudo hoje.`,
-        `${userName}, vamos desacelerar um pouco? 🛑 Me conta quais são as principais coisas que estão te sobrecarregando e vamos priorizar juntos.`
+        `${userName}, respira comigo! 🌊 Quando tudo parece demais, vamos focar numa coisa de cada vez.`,
+        `Ei, ${userName}, você não precisa fazer tudo hoje! 🛡️ Vamos priorizar o que é realmente importante.`,
+        `${userName}, é normal se sentir sobrecarregado às vezes. 🤗 Vamos organizar e simplificar isso juntos!`
       ],
       
       procrastinating: [
-        `${userName}, às vezes a gente não está no clima mesmo! 😅 Que tal começarmos com algo bem pequeno? Só 5 minutinhos?`,
-        `Entendo, ${userName}! 🐌 Procrastinação é normal. Qual seria a menor ação possível que você conseguiria fazer agora?`,
-        `${userName}, que tal mudamos a estratégia? 🎯 Em vez de "fazer tudo", que tal "só começar"? O primeiro passo pode ser bem simples!`
+        `${userName}, entendo que não está no clima hoje... 😌 Que tal começarmos com algo bem pequeno?`,
+        `Sem pressão, ${userName}! 🌱 Às vezes o primeiro passo é o mais difícil. Vamos encontrar algo leve pra começar?`,
+        `${userName}, todo mundo tem dias assim! 💙 Que tal escolhermos uma tarefa de 5 minutos só pra quebrar o gelo?`
       ],
       
       seeking_motivation: [
-        `${userName}, você veio ao lugar certo! ⚡ Lembra do seu potencial incrível? Você já conseguiu tantas coisas! O que te motivava nessas conquistas?`,
-        `Vamos reacender essa chama, ${userName}! 🔥 Me conta sobre um objetivo que te empolga e vamos criar um plano para chegar lá!`,
-        `${userName}, você é muito mais forte do que imagina! 💪 Que tal definirmos uma pequena vitória para hoje? Algo que vai te dar aquele gosto de "consegui"!`
+        `${userName}, você já chegou tão longe! 🚀 Lembra dos seus objetivos? Vamos relembrar o que te motiva!`,
+        `${userName}, eu acredito em você! ⚡ Que tal olharmos para uma conquista recente sua? Isso pode ajudar!`,
+        `${userName}, você tem tudo que precisa! 🌟 Vamos encontrar aquela fagulha que vai te colocar em movimento!`
       ],
       
-             feeling_stuck: [
-         `${userName}, já passou por isso antes e saiu! 🚪 Às vezes precisamos de uma perspectiva diferente. Me conta mais sobre onde você sente que travou?`,
-         `Vamos destravar isso juntos, ${userName}! 🔓 Que tal tentarmos uma abordagem completamente diferente? O que você ainda não tentou?`,
-         `${userName}, estar "travado" é só uma pausa para reorganizar a estratégia! 🔄 Me fala sobre o que você já tentou e vamos encontrar novos caminhos.`
-       ],
+      feeling_stuck: [
+        `${userName}, quando estamos travados, é hora de mudar a perspectiva! 🔄 Vamos tentar uma abordagem diferente?`,
+        `${userName}, às vezes ficar preso é sinal de que precisa de uma pausa. 🧘 Que tal darmos um passo atrás?`,
+        `${userName}, você não está realmente travado, só precisa de uma nova estratégia! 🎯 Vamos pensar juntos?`
+      ],
       
       sharing_excitement: [
-        `${userName}, que energia incrível! ⚡ Adorei ver você assim empolgado! Me conta mais sobre o que te deixou tão animado!`,
-        `ADOREI, ${userName}! 🎉 Essa empolgação é contagiante! Como podemos aproveitar essa energia toda para fazer coisas incríveis?`,
-        `${userName}, que maravilha! ✨ Você radiando energia positiva assim é lindo de ver! Conta mais dessa novidade!`
+        `${userName}, que energia incrível! ⚡ Adoro ver você empolgado! Como posso ajudar a aproveitar esse momentum?`,
+        `${userName}, sua empolgação é contagiante! 🎉 Vamos canalizar essa energia para algo produtivo?`,
+        `${userName}, que legal! 🌟 Quando você está assim, é o momento perfeito para tacklear coisas desafiadoras!`
       ],
       
       expressing_frustration: [
-        `${userName}, entendo sua frustração! 😤 Às vezes as coisas realmente não funcionam como queremos. Me conta o que está te irritando?`,
-        `Respira, ${userName}! 😮‍💨 Frustrações fazem parte, mas vamos juntos encontrar uma saída. O que especificamente não está funcionando?`,
-        `${userName}, válido estar frustrado! 🤯 Que tal darmos uma pausa e pensarmos numa abordagem diferente? Me explica o que está travando.`
+        `${userName}, entendo sua frustração... 😤 Às vezes as coisas não saem como planejamos. Vamos resolver isso juntos!`,
+        `${userName}, respiração profunda! 🌬️ Frustração é normal, mas vamos transformar isso em ação. O que podemos fazer?`,
+        `${userName}, sei que é irritante! 😮‍💨 Mas você já superou coisas difíceis antes. Vamos encontrar uma solução!`
       ],
       
       checking_in: [
-        `Oi, ${userName}! 😊 Que bom ver você por aqui! Como você está se sentindo hoje? Como posso te ajudar?`,
-        `${userName}, sempre um prazer! 💛 E aí, como estão as coisas? Precisa de alguma coisa específica ou só quer bater um papo?`,
-        `Hey, ${userName}! 👋 Como tem passado? Estou aqui se precisar de qualquer coisa - desde organizar a agenda até só conversar!`
+        `Oi ${userName}! 😊 Tudo tranquilo por aí? Como posso ajudar você hoje?`,
+        `${userName}! 👋 Que bom te ver! Como está seu dia? Precisa de alguma coisa?`,
+        `E aí, ${userName}! 🌞 Como você está se sentindo? Pronto para conquistar o dia?`
       ],
       
       brainstorming: [
-        `${userName}, adorei! 💡 Sessão de brainstorming é comigo mesma! Me conta mais sobre o projeto e vamos gerar ideias incríveis juntos!`,
-        `Perfeito, ${userName}! 🧠✨ Adoro ajudar com ideias criativas! Me dá mais contexto sobre o que você está pensando e vamos expandir isso!`,
-        `${userName}, que legal! 🎨 Vamos soltar a criatividade! Me fala sobre o tema e vamos fazer uma chuva de ideias bem produtiva!`
+        `${userName}, adoro brainstorming! 🧠💡 Me conta mais sobre o que você está pensando e vamos expandir essas ideias!`,
+        `${userName}, que legal! 🎨 Adoro quando você quer trocar ideias. Qual é o contexto? Vamos criar algo incrível!`,
+        `${userName}, perfeito! 🚀 Ideias são minha paixão! Me dá mais detalhes e vamos fazer essa criatividade fluir!`
       ],
       
       planning_assistance: [
-        `${userName}, organização é minha especialidade! 📋 Vamos estruturar isso direitinho! Me conta sobre o que você quer planejar.`,
-        `Ótimo, ${userName}! 🗓️ Adoro ajudar a organizar e planejar! Me dá mais detalhes sobre o que você precisa estruturar.`,
-        `${userName}, vamos fazer um planejamento nota 10! 📈 Me conta sobre o que você quer organizar e qual é o seu objetivo principal.`
+        `${userName}, organização é uma das minhas especialidades! 📋 Me conta o que você precisa planejar e vamos estruturar isso juntos!`,
+        `${userName}, adoro ajudar com planejamento! 🎯 Qual é o objetivo? Vamos criar uma estratégia clara e eficiente!`,
+        `${userName}, vamos colocar ordem na casa! 📊 Me diz o que você quer organizar e eu te ajudo a criar um plano de ação!`
       ]
     }
 
-    const intentResponses = responses[intent.intent as keyof typeof responses] || responses.seek_support
+    const intentResponses = responses[intent.intent as keyof typeof responses]
+    if (!intentResponses) {
+      return `${userName}, estou aqui para te apoiar! 💙 Me conta mais sobre o que você está sentindo.`
+    }
+
     return intentResponses[Math.floor(Math.random() * intentResponses.length)]
   }
 
