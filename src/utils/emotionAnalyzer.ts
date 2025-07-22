@@ -430,6 +430,13 @@ function getAdvancedResponseStrategy(
     case 'calm':
       return 'motivate'
     
+    // 🌟 NOVOS ESTADOS
+    case 'proud':
+      return 'share_origin' // Estado específico para quando fala sobre sua origem
+      
+    case 'curious':
+      return 'guide' // Quando o usuário está curioso, guia a conversa
+    
     default:
       return 'motivate'
   }

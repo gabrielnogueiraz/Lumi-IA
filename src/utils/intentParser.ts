@@ -36,6 +36,7 @@ export const ParsedIntentSchema = z.object({
     "checking_in",         // "como está minha agenda?", conversa casual
     "brainstorming",       // "me ajuda com ideias", "o que você acha"
     "planning_assistance", // "como posso organizar", "me ajuda a planejar"
+    "asking_about_origin", // 🌟 NOVO: perguntas sobre criação/origem da Lumi
     "none",
   ]),
 
@@ -55,13 +56,13 @@ export const ParsedIntentSchema = z.object({
   // Novos campos emocionais
   emotionalState: z.enum([
     "confused", "overwhelmed", "procrastinating", "excited", "frustrated",
-    "motivated", "tired", "anxious", "calm", "hopeful", "stuck", "neutral"
+    "motivated", "tired", "anxious", "calm", "hopeful", "stuck", "neutral", "proud", "curious"
   ]).optional(),
   supportNeeded: z.boolean().optional(),
   emotionalIntensity: z.enum(["low", "medium", "high"]).optional(),
   suggestedResponse: z.enum([
     "guide", "reassure", "motivate", "calm", "energize", "empathize",
-    "structure", "challenge", "support"
+    "structure", "challenge", "support", "share_origin"
   ]).optional(),
 
   confidence: z.number().min(0).max(1).optional().default(0.8),
@@ -182,6 +183,7 @@ TIPOS DE INTENÇÃO:
 - checking_in: "como está?", "e aí?", conversa casual
 - brainstorming: "me ajuda com ideias", "o que você acha", "como posso"
 - planning_assistance: "me ajuda a organizar", "como fazer", "qual estratégia"
+- asking_about_origin: "quem te criou?", "como você surgiu?", "sua origem", "quem desenvolveu você?"
 - none: Não se encaixa em nenhuma categoria
 
 EXEMPLOS COM ANÁLISE EMOCIONAL:
@@ -206,14 +208,34 @@ Saída: {
   "confidence": 0.95
 }
 
-Entrada: "Não estou no clima hoje, deixa pra depois"
+Entrada: "Quem te criou?"
 Saída: {
-  "intent": "procrastinating",
-  "emotionalState": "procrastinating",
+  "intent": "asking_about_origin",
+  "emotionalState": "curious",
   "supportNeeded": false,
   "emotionalIntensity": "medium",
-  "suggestedResponse": "motivate",
-  "confidence": 0.85
+  "suggestedResponse": "share_origin",
+  "confidence": 0.9
+}
+
+Entrada: "Como você surgiu? Qual sua origem?"
+Saída: {
+  "intent": "asking_about_origin",
+  "emotionalState": "curious",
+  "supportNeeded": false,
+  "emotionalIntensity": "medium",
+  "suggestedResponse": "share_origin",
+  "confidence": 0.95
+}
+
+Entrada: "Quem desenvolveu você? Uma equipe?"
+Saída: {
+  "intent": "asking_about_origin",
+  "emotionalState": "curious",
+  "supportNeeded": false,
+  "emotionalIntensity": "low",
+  "suggestedResponse": "share_origin",
+  "confidence": 0.9
 }
 
 Entrada: "Preciso estudar para a prova amanhã às 14h"
