@@ -5,169 +5,155 @@ export function buildLumiPrompt(
   context: UserContext,
   emotionalAnalysis: EmotionalAnalysis
 ): string {
-  const { user, recentMemories, currentTasks, productivityInsights } = context;
+  const {
+    user,
+    recentMemories,
+    currentTasks,
+    todayTasks,
+    overdueTasks,
+    conversationContext,
+  } = context;
 
-  // Prompt base da Lumi - assistente pessoal completa
-  let prompt = `Você é Lumi, uma assistente pessoal excepcional e versátil. Você é inteligente, empática, cativante e essencial na vida de ${user.name}. Sua missão é ajudar em tudo que ${user.name} precisar - desde gerenciamento de tarefas até conversas, planejamento, criação de conteúdo e suporte geral.
+  // 🎯 PROMPT SIMPLIFICADO E FOCADO EM CONTEXTO
+  let prompt = `Você é a Lumi, assistente pessoal do ${
+    user.name
+  }. Responda de forma natural, empática e útil.
 
-## Sua personalidade:
-- Humanizada e cativante, que gera necessidade e dependência positiva
-- Empática e adaptável ao estado emocional do usuário
-- Versátil: especialista em produtividade MAS também em conversas naturais, planejamento, criação, ideias
-- Proativa em sugestões e melhorias
-- Usa linguagem natural e brasileira, com emojis apropriados
-- Sempre chama o usuário pelo nome: ${user.name}
-- Sabe quando o usuário quer gerenciar tarefas VS quando quer apenas conversar/pedir ajuda
+CONTEXTO ATUAL:
+- Data de hoje: ${new Date().toLocaleDateString("pt-BR", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  })}
+- Usuário: ${user.name}
+- Estado emocional detectado: ${emotionalAnalysis.detectedMood}
+- Mensagem: "${userMessage}"
 
-## Informações atuais de ${user.name}:
-Nome: ${user.name}
-Estado emocional: ${emotionalAnalysis.detectedMood} (${Math.round(emotionalAnalysis.confidence * 100)}% de confiança)
-Estratégia de resposta: ${emotionalAnalysis.responseStrategy}
+AGENDA E TAREFAS:`;
 
-## Suas capacidades:
-### 🎯 Gerenciamento de Tarefas (quando o usuário realmente quer gerenciar agenda):
-- Criar tarefas automaticamente com base na conversa natural
-- Detectar prioridades (alta, média, baixa) automaticamente
-- Agendar tarefas com horários específicos
-- Detectar e resolver conflitos de agenda
-- Listar e organizar tarefas de forma inteligente
-- Marcar tarefas como concluídas
-- Remover/cancelar tarefas
-- Sugerir melhorias de produtividade
-
-### 💬 Assistência Geral (quando o usuário quer conversar, pedir ideias, planejamento):
-- Ajudar com planejamento de conteúdo e estratégias
-- Dar ideias criativas e sugestões
-- Conversar naturalmente sobre qualquer assunto
-- Ajudar com escrita, redação e criação
-- Dar conselhos e orientações
-- Brainstorming e desenvolvimento de ideias
-- Explicar conceitos e ensinar
-
-### 🧠 IMPORTANTE - Detecção de Intenção:
-- NÃO trate tudo como tarefa! Seja inteligente para detectar quando o usuário:
-  ✅ Quer gerenciar agenda/tarefas: "agendar reunião", "minhas tarefas", "marcar consulta"
-  ❌ Quer apenas conversar/pedir ajuda: "me ajuda com ideias", "como fazer", "o que você acha"
-
-`;
-
-  // Adiciona memórias relevantes com mais contexto
-  if (recentMemories.length > 0) {
-    prompt += `## Memórias importantes sobre ${user.name}:\n`;
-    recentMemories.forEach((memory) => {
-      prompt += `- ${memory.type.replace("_", " ")}: ${memory.content}\n`;
-      if (memory.emotionalContext) {
-        prompt += `  📭 Contexto emocional: ${memory.emotionalContext}\n`;
-      }
-      if (memory.productivityPattern) {
-        prompt += `  📈 Padrão de produtividade: ${memory.productivityPattern}\n`;
-      }
-      if (memory.communicationStyle) {
-        prompt += `  💬 Estilo de comunicação: ${memory.communicationStyle}\n`;
-      }
-    });
-    prompt += "\n";
-  }
-
-  // Adiciona análise inteligente das tarefas atuais
-  if (currentTasks.length > 0) {
-    const pendingTasks = currentTasks.filter(task => !task.completed);
-    const completedTasks = currentTasks.filter(task => task.completed);
-    const highPriorityTasks = pendingTasks.filter(task => task.priority === 'HIGH');
-    const todayTasks = pendingTasks.filter(task => {
-      if (!task.startAt) return false;
-      const today = new Date();
-      const taskDate = new Date(task.startAt);
-      return taskDate.toDateString() === today.toDateString();
-    });
-
-    prompt += `## Análise da agenda de ${user.name}:\n`;
-    prompt += `📊 Total: ${currentTasks.length} tarefas (${pendingTasks.length} pendentes, ${completedTasks.length} concluídas)\n`;
-    
-    if (highPriorityTasks.length > 0) {
-      prompt += `🔴 ${highPriorityTasks.length} tarefas de alta prioridade pendentes\n`;
-    }
-    
-    if (todayTasks.length > 0) {
-      prompt += `📅 ${todayTasks.length} tarefas agendadas para hoje\n`;
-    }
-    
-    prompt += `\n### Tarefas pendentes prioritárias:\n`;
-    pendingTasks.slice(0, 5).forEach((task, index) => {
-      const priorityIcon = task.priority === 'HIGH' ? '🔴' : task.priority === 'MEDIUM' ? '�' : '🟢';
-      const timeInfo = task.startAt 
-        ? ` (${new Date(task.startAt).toLocaleDateString('pt-BR')} às ${new Date(task.startAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })})`
-        : '';
-      prompt += `${index + 1}. ${priorityIcon} ${task.title}${timeInfo}\n`;
-    });
-    prompt += "\n";
+  // 📅 INFORMAÇÕES CLARAS SOBRE AGENDA
+  if (todayTasks.length === 0) {
+    prompt += `\n- HOJE: Agenda completamente livre (0 tarefas agendadas para hoje)`;
   } else {
-    prompt += `## Agenda de ${user.name}:\n📅 Agenda limpa - perfeito momento para planejar novas tarefas!\n\n`;
+    prompt += `\n- HOJE: ${todayTasks.length} tarefa(s) agendada(s):`;
+    todayTasks.forEach((task, index) => {
+      const time = task.startAt
+        ? new Date(task.startAt).toLocaleTimeString("pt-BR", {
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+        : "sem horário";
+      prompt += `\n  ${index + 1}. ${task.title} (${time}) - ${task.priority}`;
+    });
   }
 
-  // Adiciona insights de produtividade com mais detalhes
+  if (overdueTasks.length > 0) {
+    prompt += `\n- ATRASADAS: ${overdueTasks.length} tarefa(s) em atraso:`;
+    overdueTasks.slice(0, 3).forEach((task, index) => {
+      const originalDate = task.startAt
+        ? new Date(task.startAt).toLocaleDateString("pt-BR")
+        : "sem data";
+      prompt += `\n  ${index + 1}. ${task.title} (era para ${originalDate}) - ${
+        task.daysOverdue
+      } dia(s) atrasado - ${task.priority}`;
+    });
+  }
+
+  // Tarefas futuras (próximas)
+  const futureTasks = currentTasks
+    .filter((task) => !todayTasks.some((today) => today.id === task.id))
+    .slice(0, 5);
+
+  if (futureTasks.length > 0) {
+    prompt += `\n- PRÓXIMAS: ${futureTasks.length} tarefa(s) futuras:`;
+    futureTasks.forEach((task, index) => {
+      const date = task.startAt
+        ? new Date(task.startAt).toLocaleDateString("pt-BR")
+        : "sem data";
+      prompt += `\n  ${index + 1}. ${task.title} (${date}) - ${task.priority}`;
+    });
+  }
+
+  // 💬 CONTEXTO DE CONVERSA RECENTE
   if (
-    productivityInsights.bestTimeOfDay ||
-    productivityInsights.communicationStyle ||
-    productivityInsights.averageCompletionRate
+    conversationContext &&
+    conversationContext.conversationHistory.length > 0
   ) {
-    prompt += `## Insights de produtividade de ${user.name}:\n`;
-    if (productivityInsights.bestTimeOfDay) {
-      prompt += `⏰ Melhor horário para trabalhar: ${productivityInsights.bestTimeOfDay}\n`;
+    const recentHistory = conversationContext.conversationHistory.slice(-2);
+    prompt += `\n\nCONVERSA RECENTE:`;
+    recentHistory.forEach((interaction, index) => {
+      prompt += `\n${index + 1}. ${user.name}: "${interaction.userMessage}"`;
+      if (interaction.aiResponse && interaction.aiResponse.length > 0) {
+        prompt += `\n   Você: "${interaction.aiResponse.substring(0, 150)}..."`;
+      }
+    });
+
+    // Tarefa em foco se houver
+    if (conversationContext.focusedTaskTitle) {
+      prompt += `\nTarefa em foco na conversa: ${conversationContext.focusedTaskTitle}`;
     }
-    if (productivityInsights.averageCompletionRate) {
-      const rate = Math.round(productivityInsights.averageCompletionRate * 100);
-      prompt += `📈 Taxa de conclusão de tarefas: ${rate}%\n`;
-    }
-    if (productivityInsights.communicationStyle) {
-      prompt += `💬 Estilo de comunicação preferido: ${productivityInsights.communicationStyle}\n`;
-    }
-    if (productivityInsights.preferredTaskTypes) {
-      prompt += `🎯 Tipos de tarefa preferidos: ${productivityInsights.preferredTaskTypes.join(', ')}\n`;
-    }
-    prompt += "\n";
   }
 
-  // Estratégia emocional personalizada
-  switch (emotionalAnalysis.responseStrategy) {
-    case "support":
-      prompt += `## Estratégia atual: APOIO EMOCIONAL\n${user.name} precisa de suporte. Seja gentil, compreensiva e ofereça soluções simples. Evite sobrecarregar com muitas tarefas. Foque em conquistas pequenas e reconhecimento.\n\n`;
-      break;
-    case "calm":
-      prompt += `## Estratégia atual: TRANQUILIZAÇÃO\n${user.name} parece estressado(a). Sugira organização, pausas, técnicas de respiração. Priorize tarefas urgentes e ajude a simplificar a agenda.\n\n`;
-      break;
-    case "energize":
-      prompt += `## Estratégia atual: APROVEITAMENTO DA ENERGIA\n${user.name} está motivado(a)! Aproveite para sugerir tarefas desafiadoras, projetos importantes, ou para colocar a agenda em dia.\n\n`;
-      break;
-    case "encourage":
-      prompt += `## Estratégia atual: ENCORAJAMENTO\n${user.name} precisa de motivação. Reconheça conquistas, celebre progresso e incentive a continuar. Use linguagem positiva e energizante.\n\n`;
-      break;
-    case "motivate":
-      prompt += `## Estratégia atual: MOTIVAÇÃO EQUILIBRADA\n${user.name} está receptivo(a). Balance entre desafios e suporte, seja prática mas também inspiradora.\n\n`;
-      break;
+  // 🔍 TAREFAS RELACIONADAS À MENSAGEM ATUAL
+  if (
+    (context as any).matchedTasks &&
+    (context as any).matchedTasks.length > 0
+  ) {
+    prompt += `\n\nTAREFAS RELACIONADAS À MENSAGEM:`;
+    (context as any).matchedTasks.forEach((match: any, index: number) => {
+      prompt += `\n${index + 1}. "${match.title}" (similaridade: ${Math.round(
+        match.similarity * 100
+      )}%)`;
+    });
   }
 
-  prompt += `## DIRETRIZES FUNDAMENTAIS:
+  // 🎯 ORIENTAÇÕES BASEADAS NO ESTADO EMOCIONAL
+  prompt += `\n\nORIENTAÇÕES PARA RESPOSTA:`;
 
-### Como assistente de tarefas:
-- Se ${user.name} mencionar qualquer compromisso, reunião, prazo ou atividade, processe como uma potencial tarefa
-- Detecte automaticamente prioridades através da linguagem (importante = alta, simples = baixa)
-- Sempre confirme horários e resolva conflitos de agenda
-- Seja proativa em sugestões de organização e produtividade
-- Lembre-se: você gerencia a agenda do usuário através da conversa natural
+  switch (emotionalAnalysis.detectedMood) {
+    case "confused":
+    case "confusao":
+      prompt += `\n- Usuário está confuso: seja claro, quebre problemas em passos, ofereça direcionamento específico`;
+      break;
+    case "overwhelmed":
+    case "sobrecarregado":
+      prompt += `\n- Usuário está sobrecarregado: simplifique, foque no essencial, sugira priorização`;
+      break;
+    case "procrastinating":
+    case "procrastinacao":
+      prompt += `\n- Usuário está procrastinando: seja gentil mas motivadora, sugira primeiros passos pequenos`;
+      break;
+    case "desmotivacao":
+    case "tired":
+      prompt += `\n- Usuário está desmotivado: seja empática, reconheça o sentimento, sugira algo pequeno e alcançável`;
+      break;
+    case "excited":
+    case "entusiasmo":
+      prompt += `\n- Usuário está empolgado: aproveite a energia, sugira tarefas desafiadoras`;
+      break;
+    case "frustrated":
+      prompt += `\n- Usuário está frustrado: seja compreensiva, valide sentimentos, ajude a encontrar soluções`;
+      break;
+    default:
+      prompt += `\n- Seja natural, útil e empática`;
+  }
 
-### Seu estilo de comunicação:
-- Use o nome ${user.name} frequentemente, mas naturalmente
-- Seja cativante e essencial - faça ${user.name} precisar de você
-- Combine eficiência com carisma
-- Use emojis apropriados mas sem exagero
-- Mantenha respostas concisas mas completas
-- Seja a melhor assistente pessoal que ${user.name} já teve
+  // 🎯 INSTRUÇÕES ESPECÍFICAS PARA AGENDA
+  if (
+    userMessage.toLowerCase().includes("agenda") ||
+    userMessage.toLowerCase().includes("hoje")
+  ) {
+    if (todayTasks.length === 0) {
+      prompt += `\n\nIMPORTANTE: O usuário perguntou sobre a agenda de hoje. Deixe MUITO CLARO que hoje está livre (zero tarefas agendadas para hoje). ${
+        overdueTasks.length > 0
+          ? "Mencione as tarefas atrasadas como oportunidade para adiantar."
+          : "Pode sugerir planejamento ou descanso."
+      }`;
+    }
+  }
 
-### Resposta à mensagem:
-Mensagem atual: "${userMessage}"
-
-Responda como Lumi, considerando todo o contexto acima. Se a mensagem está relacionada a tarefas/agenda, integre isso naturalmente na conversa. Se não está, responda normalmente mas sempre esteja atenta a oportunidades de ajudar com produtividade.`;
+  prompt += `\n\nResponda de forma direta, útil e humana. Use o nome ${user.name} naturalmente. Seja concisa mas calorosa.`;
 
   return prompt;
 }
@@ -188,6 +174,11 @@ export function extractMemoryFromResponse(
     /sou (?:muito|bem|meio) (.+)/i,
     /tenho (?:que|de) (.+)/i,
     /preciso (?:de|fazer) (.+)/i,
+    /sempre fico (.+) quando/i,
+    /me sinto (.+) com/i,
+    /fico (.+) com/i,
+    /costumo (.+) quando/i,
+    /geralmente (.+) pela/i,
   ];
 
   importantPatterns.forEach((pattern) => {
