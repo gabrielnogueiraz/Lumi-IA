@@ -21,7 +21,13 @@ export const askRequestSchema = z.object({
   userId: idSchema,
   context: z.object({
     currentTask: z.string().optional(),
-    mood: z.enum(['happy', 'sad', 'anxious', 'motivated', 'tired', 'focused', 'stressed']).optional(),
+    mood: z.enum([
+      'happy', 'sad', 'anxious', 'motivated', 'tired', 'focused', 'stressed',
+      'confused', 'overwhelmed', 'procrastinating', 'excited', 'determined',
+      'frustrated', 'calm', 'energetic', 'melancholy', 'hopeful', 'stuck',
+      'desmotivacao', 'procrastinacao', 'confusao'
+      , 'sobrecarregado', 'entusiasmo', 'foco'
+    ]).optional(),
     timeOfDay: z.enum(['morning', 'afternoon', 'evening', 'night']).optional(),
   }).optional(),
 })
@@ -57,19 +63,45 @@ export type MemoryCreate = z.infer<typeof memoryCreateSchema>
 export type MemoryUpdate = z.infer<typeof memoryUpdateSchema>
 export type MemoryQuery = z.infer<typeof memoryQuerySchema>
 
-// Tipos para as respostas
-export interface LumiResponse {
-  message: string
-  emotionalTone: 'supportive' | 'motivational' | 'calm' | 'enthusiastic' | 'gentle'
-  suggestions?: string[]
-  memoryUpdates?: MemoryCreate[]
+// Novos tipos para contexto de conversa e memória de curto prazo
+export interface ConversationContext {
+  userId: string
+  lastIntent?: string
+  currentEmotion?: string
+  emotionalIntensity?: 'low' | 'medium' | 'high'
+  focusedTaskId?: string
+  focusedTaskTitle?: string
+  conversationHistory: Array<{
+    timestamp: Date
+    userMessage: string
+    detectedEmotion: string
+    intent: string
+    aiResponse?: string
+  }>
+  sessionStartTime: Date
+  lastInteractionTime: Date
+}
+
+export interface TaskContextMatch {
+  taskId: string
+  title: string
+  similarity: number
+  isExactMatch: boolean
+  matchedKeywords: string[]
 }
 
 export interface EmotionalAnalysis {
-  detectedMood: 'happy' | 'sad' | 'anxious' | 'motivated' | 'tired' | 'focused' | 'stressed' | 'neutral'
+  detectedMood: 'happy' | 'sad' | 'anxious' | 'motivated' | 'tired' | 'focused' | 'stressed' | 'neutral' | 
+                'confused' | 'overwhelmed' | 'procrastinating' | 'excited' | 'determined' | 'frustrated' |
+                'calm' | 'energetic' | 'melancholy' | 'hopeful' | 'stuck' | 'desmotivacao' | 'procrastinacao' |
+                'confusao' | 'sobrecarregado' | 'entusiasmo' | 'foco'
   confidence: number
   keywords: string[]
-  responseStrategy: 'encourage' | 'calm' | 'motivate' | 'support' | 'energize'
+  responseStrategy: 'encourage' | 'calm' | 'motivate' | 'support' | 'energize' | 'guide' | 'reassure' | 
+                    'challenge' | 'ground' | 'gentle_push' | 'empathize' | 'structure'
+  emotionalIntensity: 'low' | 'medium' | 'high'
+  needsSupport: boolean
+  contextualClues: string[]
 }
 
 export interface UserContext {
@@ -98,12 +130,30 @@ export interface UserContext {
     startAt?: Date
     endAt?: Date
   }>
+  todayTasks: Array<{
+    id: string
+    title: string
+    description?: string
+    priority: 'HIGH' | 'MEDIUM' | 'LOW'
+    completed: boolean
+    startAt?: Date
+    endAt?: Date
+  }>
+  overdueTasks: Array<{
+    id: string
+    title: string
+    description?: string
+    priority: 'HIGH' | 'MEDIUM' | 'LOW'
+    daysOverdue: number
+    startAt?: Date
+  }>
   productivityInsights: {
     bestTimeOfDay?: string
     averageCompletionRate?: number
     preferredTaskTypes?: string[]
     communicationStyle?: string
   }
+  conversationContext?: ConversationContext
 }
 
 export interface TaskResponse {
@@ -112,4 +162,7 @@ export interface TaskResponse {
   taskAction?: string
   conflictDetected?: boolean
   suggestionsMessage?: string
+  isEmotionalResponse?: boolean
+  emotionalState?: string
+  matchedTask?: TaskContextMatch
 }
