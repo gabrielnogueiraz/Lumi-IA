@@ -28,13 +28,12 @@ model User {
   createdAt         DateTime           @default(now())
   updatedAt         DateTime
   name              String
+  lumiMemories      LumiMemory[]
   Notification      Notification[]
   boards            boards[]
-  garden_flowers    garden_flowers[]
   pomodoro_settings pomodoro_settings?
   pomodoros         pomodoros[]
   tasks             tasks[]
-  lumiMemories      LumiMemory[]
 }
 
 model boards {
@@ -56,22 +55,6 @@ model columns {
   updatedAt DateTime
   boards    boards   @relation(fields: [boardId], references: [id], onDelete: Cascade)
   tasks     tasks[]
-}
-
-model garden_flowers {
-  id            String     @id
-  userId        String
-  taskId        String
-  type          FlowerType @default(NORMAL)
-  priority      Priority
-  color         String?
-  legendaryName String?
-  customName    String?
-  tags          String[]   @default([])
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime
-  tasks         tasks      @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  User          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model pomodoro_settings {
@@ -102,22 +85,21 @@ model pomodoros {
 }
 
 model tasks {
-  id             String           @id
-  title          String
-  description    String?
-  priority       Priority
-  startAt        DateTime?
-  endAt          DateTime?
-  pomodoroGoal   Int              @default(1)
-  columnId       String
-  userId         String
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime
-  completed      Boolean          @default(false)
-  garden_flowers garden_flowers[]
-  pomodoros      pomodoros[]
-  columns        columns          @relation(fields: [columnId], references: [id], onDelete: Cascade)
-  User           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id           String      @id
+  title        String
+  description  String?
+  priority     Priority
+  startAt      DateTime?
+  endAt        DateTime?
+  pomodoroGoal Int         @default(1)
+  columnId     String
+  userId       String
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime
+  completed    Boolean     @default(false)
+  pomodoros    pomodoros[]
+  columns      columns     @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  User         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model waitlist_emails {
@@ -128,28 +110,23 @@ model waitlist_emails {
 }
 
 model LumiMemory {
-  id                    String            @id @default(uuid())
-  userId                String
-  type                  MemoryType
-  content               String
-  importance            ImportanceLevel   @default(MEDIUM)
-  emotionalContext      String?
-  productivityPattern   String?
-  communicationStyle    String?
-  createdAt             DateTime          @default(now())
-  updatedAt             DateTime          @updatedAt
-  expiresAt             DateTime?
-  tags                  String[]          @default([])
-  User                  User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                  String          @id @default(uuid())
+  userId              String
+  type                MemoryType
+  content             String
+  importance          ImportanceLevel @default(MEDIUM)
+  emotionalContext    String?
+  productivityPattern String?
+  communicationStyle  String?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  expiresAt           DateTime?
+  tags                String[]        @default([])
+  User                User            @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([type])
   @@index([importance])
-}
-
-enum FlowerType {
-  NORMAL
-  LEGENDARY
 }
 
 enum PomodoroStatus {
