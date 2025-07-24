@@ -3,7 +3,7 @@ import { TaskService } from '../task/taskService'
 import { TaskAssistant } from '../task/taskAssistant'
 import { MemoryService } from '../memory/memoryService'
 import { UserContext, EmotionalAnalysis, TaskResponse } from '../../types'
-import { analyzeEmotion } from '../../utils/emotionAnalyzer'
+import { analyzeEmotion, analyzeEmotionWithContext } from '../../utils/emotionAnalyzer'
 import { buildLumiPrompt, extractMemoryFromResponse } from '../../utils/promptBuilder'
 import { prioritizeMemories } from '../../utils/helpers'
 import { conversationContextService } from '../../services/conversationContextService'
@@ -150,8 +150,8 @@ export class AssistantService {
     taskResponse?: TaskResponse
     matchedTasks?: any[]
   }> {
-    // Analisa emoção da mensagem
-    const emotionalAnalysis = analyzeEmotion(message)
+    // Analisa emoção da mensagem com contexto conversacional
+    const emotionalAnalysis = analyzeEmotionWithContext(message, context.conversationContext)
 
     // 🔍 MELHOR MATCHING DE TAREFAS: busca em todas as tarefas
     const allUserTasks = [...context.currentTasks, ...context.todayTasks, ...context.overdueTasks]
